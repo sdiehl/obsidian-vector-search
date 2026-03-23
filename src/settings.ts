@@ -33,6 +33,11 @@ export interface VectorSearchSettings {
   titleWeight: number;
   includePath: boolean;
   minContentLength: number;
+  lowercase: boolean;
+  stripUrls: boolean;
+  stripMarkdown: boolean;
+  stripPatterns: string;
+  includeGlobs: string;
 }
 
 export const DEFAULT_SETTINGS: VectorSearchSettings = {
@@ -49,6 +54,11 @@ export const DEFAULT_SETTINGS: VectorSearchSettings = {
   titleWeight: 1,
   includePath: false,
   minContentLength: 20,
+  lowercase: false,
+  stripUrls: false,
+  stripMarkdown: false,
+  stripPatterns: "",
+  includeGlobs: "",
 };
 
 export class VectorSearchSettingTab extends PluginSettingTab {
@@ -63,37 +73,84 @@ export class VectorSearchSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
+    const readonly = this.plugin.settings.indexMode === "readonly";
+
     containerEl.createEl("h2", { text: "Vector Search Settings" });
 
-    // Index management buttons
+    // -- Index management --
     const indexInfo = this.plugin.index
       ? `${Object.keys(this.plugin.index.notes).length} notes indexed`
       : "No index";
 
-    new Setting(containerEl)
+    const indexSetting = new Setting(containerEl)
       .setName("Index")
-      .setDesc(indexInfo)
-      .addButton((btn) => {
-        btn.setButtonText("Rebuild").onClick(async () => {
-          btn.setDisabled(true);
-          btn.setButtonText("Indexing...");
-          await this.plugin.rebuildIndex();
-          btn.setDisabled(false);
-          btn.setButtonText("Rebuild");
-          this.display();
+      .setDesc(indexInfo);
+
+    if (!readonly) {
+      indexSetting
+        .addButton((btn) => {
+          btn.setButtonText("Rebuild").onClick(async () => {
+            btn.setDisabled(true);
+            btn.setButtonText("Indexing...");
+            await this.plugin.rebuildIndex();
+            btn.setDisabled(false);
+            btn.setButtonText("Rebuild");
+            this.display();
+          });
+        })
+        .addButton((btn) => {
+          btn.setButtonText("Clear").setWarning().onClick(async () => {
+            await this.plugin.clearIndex();
+            this.display();
+          });
         });
-      })
-      .addButton((btn) => {
-        btn.setButtonText("Clear").setWarning().onClick(async () => {
-          await this.plugin.clearIndex();
+    }
+
+    new Setting(containerEl)
+      .setName("Indexing mode")
+      .setDesc(
+        "On change: re-embeds after edits. Interval: periodic full re-index. Manual: rebuild button only. Read-only: iPad mode, search only.",
+      )
+      .addDropdown((drop) => {
+        drop.addOption("on-change", "On change (debounced)");
+        drop.addOption("interval", "On interval (periodic)");
+        drop.addOption("manual", "Manual only");
+        drop.addOption("readonly", "Read-only (iPad mode)");
+        drop.setValue(this.plugin.settings.indexMode);
+        drop.onChange(async (value: string) => {
+          this.plugin.settings.indexMode = value as VectorSearchSettings["indexMode"];
+          await this.plugin.saveSettings();
+          this.plugin.setupIndexing();
           this.display();
         });
       });
 
+    if (!readonly) {
+      new Setting(containerEl)
+        .setName("Index interval (seconds)")
+        .setDesc(
+          "On-change: debounce delay before re-embedding. Interval: how often to re-index all notes.",
+        )
+        .addText((text) => {
+          text.setValue(String(this.plugin.settings.autoIndexInterval));
+          text.onChange(async (value) => {
+            const n = parseInt(value, 10);
+            if (!isNaN(n) && n >= 1) {
+              this.plugin.settings.autoIndexInterval = n;
+              await this.plugin.saveSettings();
+              this.plugin.setupIndexing();
+            }
+          });
+        });
+    }
+
+    // -- Display --
+    containerEl.createEl("h3", { text: "Display" });
+
     new Setting(containerEl)
       .setName("Embedding model")
       .setDesc(
-        "Model used for ad-hoc search queries. Changing this requires re-indexing with the same model.",
+        "Model for ad-hoc search queries. Changing this requires a rebuild.",
       )
       .addDropdown((drop) => {
         for (const [id, info] of Object.entries(MODELS)) {
@@ -108,7 +165,7 @@ export class VectorSearchSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Max results")
-      .setDesc("Maximum number of similar notes to show in the sidebar.")
+      .setDesc("Maximum number of similar notes to show.")
       .addText((text) => {
         text.setValue(String(this.plugin.settings.maxResults));
         text.onChange(async (value) => {
@@ -122,9 +179,7 @@ export class VectorSearchSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Minimum similarity score")
-      .setDesc(
-        "Hide results below this cosine similarity threshold (0.0 to 1.0).",
-      )
+      .setDesc("Hide results below this threshold (0.0 to 1.0).")
       .addText((text) => {
         text.setValue(String(this.plugin.settings.minScore));
         text.onChange(async (value) => {
@@ -147,140 +202,171 @@ export class VectorSearchSettingTab extends PluginSettingTab {
         });
       });
 
-    new Setting(containerEl)
-      .setName("Indexing mode")
-      .setDesc(
-        "How to keep embeddings up to date. 'On change' re-embeds after edits. 'Interval' re-indexes all notes periodically. 'Manual' only indexes via the Rebuild button.",
-      )
-      .addDropdown((drop) => {
-        drop.addOption("on-change", "On change (debounced)");
-        drop.addOption("interval", "On interval (periodic)");
-        drop.addOption("manual", "Manual only");
-        drop.addOption("readonly", "Read-only (iPad mode)");
-        drop.setValue(this.plugin.settings.indexMode);
-        drop.onChange(async (value: string) => {
-          this.plugin.settings.indexMode = value as "on-change" | "interval" | "manual" | "readonly";
-          await this.plugin.saveSettings();
-          this.plugin.setupIndexing();
-        });
-      });
+    // -- Indexing settings (hidden in readonly) --
+    if (!readonly) {
+      containerEl.createEl("h3", { text: "Content Processing" });
 
-    new Setting(containerEl)
-      .setName("Index interval (seconds)")
-      .setDesc(
-        "For 'on change' mode: debounce delay. For 'interval' mode: how often to re-index all notes.",
-      )
-      .addText((text) => {
-        text.setValue(String(this.plugin.settings.autoIndexInterval));
-        text.onChange(async (value) => {
-          const n = parseInt(value, 10);
-          if (!isNaN(n) && n >= 1) {
-            this.plugin.settings.autoIndexInterval = n;
+      new Setting(containerEl)
+        .setName("Include frontmatter tags")
+        .setDesc(
+          "Embed YAML tags alongside content. Improves topic matching.",
+        )
+        .addToggle((toggle) => {
+          toggle.setValue(this.plugin.settings.includeFrontmatter);
+          toggle.onChange(async (value) => {
+            this.plugin.settings.includeFrontmatter = value;
             await this.plugin.saveSettings();
-            this.plugin.setupIndexing();
-          }
+          });
         });
-      });
 
-    new Setting(containerEl)
-      .setName("Index file path")
-      .setDesc(
-        "Custom path for embeddings.json (relative to vault root). Leave empty for default (plugin directory).",
-      )
-      .addText((text) => {
-        text.setPlaceholder("e.g. .obsidian/vector-index.json");
-        text.setValue(this.plugin.settings.indexPath);
-        text.onChange(async (value) => {
-          this.plugin.settings.indexPath = value.trim();
-          await this.plugin.saveSettings();
+      new Setting(containerEl)
+        .setName("Title weight")
+        .setDesc(
+          "Prepend the note title N times. Titles carry strong semantic signal. 0 to disable.",
+        )
+        .addText((text) => {
+          text.setValue(String(this.plugin.settings.titleWeight));
+          text.onChange(async (value) => {
+            const n = parseInt(value, 10);
+            if (!isNaN(n) && n >= 0) {
+              this.plugin.settings.titleWeight = n;
+              await this.plugin.saveSettings();
+            }
+          });
         });
-      });
 
-    new Setting(containerEl)
-      .setName("Exclude folders (indexer)")
-      .setDesc(
-        "Comma-separated folder names to exclude when indexing. Used by the CLI indexer.",
-      )
-      .addText((text) => {
-        text.setValue(this.plugin.settings.excludeFolders);
-        text.onChange(async (value) => {
-          this.plugin.settings.excludeFolders = value;
-          await this.plugin.saveSettings();
-        });
-      });
-
-    new Setting(containerEl)
-      .setName("Truncation length")
-      .setDesc(
-        "Max characters of note content to embed. Longer notes are truncated.",
-      )
-      .addText((text) => {
-        text.setValue(String(this.plugin.settings.truncationLength));
-        text.onChange(async (value) => {
-          const n = parseInt(value, 10);
-          if (!isNaN(n) && n > 0) {
-            this.plugin.settings.truncationLength = n;
+      new Setting(containerEl)
+        .setName("Include file path")
+        .setDesc(
+          "Prepend file path (e.g. 'formal-methods/cedar') for folder-based topic signal.",
+        )
+        .addToggle((toggle) => {
+          toggle.setValue(this.plugin.settings.includePath);
+          toggle.onChange(async (value) => {
+            this.plugin.settings.includePath = value;
             await this.plugin.saveSettings();
-          }
+          });
         });
-      });
 
-    containerEl.createEl("h3", { text: "Search Quality" });
+      containerEl.createEl("h3", { text: "Normalization" });
 
-    new Setting(containerEl)
-      .setName("Include frontmatter tags")
-      .setDesc(
-        "Embed YAML frontmatter tags alongside note content. Tags like 'lean4, onechronos' improve topic matching.",
-      )
-      .addToggle((toggle) => {
-        toggle.setValue(this.plugin.settings.includeFrontmatter);
-        toggle.onChange(async (value) => {
-          this.plugin.settings.includeFrontmatter = value;
-          await this.plugin.saveSettings();
-        });
-      });
-
-    new Setting(containerEl)
-      .setName("Title weight")
-      .setDesc(
-        "Prepend the note title N times before content. Titles carry strong semantic signal. 0 to disable.",
-      )
-      .addText((text) => {
-        text.setValue(String(this.plugin.settings.titleWeight));
-        text.onChange(async (value) => {
-          const n = parseInt(value, 10);
-          if (!isNaN(n) && n >= 0) {
-            this.plugin.settings.titleWeight = n;
+      new Setting(containerEl)
+        .setName("Lowercase")
+        .setDesc("Convert text to lowercase before embedding.")
+        .addToggle((toggle) => {
+          toggle.setValue(this.plugin.settings.lowercase);
+          toggle.onChange(async (value) => {
+            this.plugin.settings.lowercase = value;
             await this.plugin.saveSettings();
-          }
+          });
         });
-      });
 
-    new Setting(containerEl)
-      .setName("Include file path")
-      .setDesc(
-        "Prepend the file path (e.g. 'formal-methods/cedar') to content. Folder names carry topic signal.",
-      )
-      .addToggle((toggle) => {
-        toggle.setValue(this.plugin.settings.includePath);
-        toggle.onChange(async (value) => {
-          this.plugin.settings.includePath = value;
-          await this.plugin.saveSettings();
-        });
-      });
-
-    new Setting(containerEl)
-      .setName("Minimum content length")
-      .setDesc("Skip notes shorter than this many characters after processing.")
-      .addText((text) => {
-        text.setValue(String(this.plugin.settings.minContentLength));
-        text.onChange(async (value) => {
-          const n = parseInt(value, 10);
-          if (!isNaN(n) && n >= 0) {
-            this.plugin.settings.minContentLength = n;
+      new Setting(containerEl)
+        .setName("Strip URLs")
+        .setDesc("Remove URLs from content before embedding.")
+        .addToggle((toggle) => {
+          toggle.setValue(this.plugin.settings.stripUrls);
+          toggle.onChange(async (value) => {
+            this.plugin.settings.stripUrls = value;
             await this.plugin.saveSettings();
-          }
+          });
         });
-      });
+
+      new Setting(containerEl)
+        .setName("Strip markdown syntax")
+        .setDesc(
+          "Remove markdown formatting (headings markers, bold, italic, links, code fences) before embedding.",
+        )
+        .addToggle((toggle) => {
+          toggle.setValue(this.plugin.settings.stripMarkdown);
+          toggle.onChange(async (value) => {
+            this.plugin.settings.stripMarkdown = value;
+            await this.plugin.saveSettings();
+          });
+        });
+
+      new Setting(containerEl)
+        .setName("Strip patterns (regex)")
+        .setDesc(
+          "Custom regex patterns to strip from content, one per line. Applied before embedding.",
+        )
+        .addTextArea((text) => {
+          text.setPlaceholder("e.g.\n\\[\\[.*?\\]\\]\n<!--.*?-->");
+          text.setValue(this.plugin.settings.stripPatterns);
+          text.onChange(async (value) => {
+            this.plugin.settings.stripPatterns = value;
+            await this.plugin.saveSettings();
+          });
+        });
+
+      containerEl.createEl("h3", { text: "File Selection" });
+
+      new Setting(containerEl)
+        .setName("Exclude folders")
+        .setDesc("Comma-separated folder names to skip when indexing.")
+        .addText((text) => {
+          text.setValue(this.plugin.settings.excludeFolders);
+          text.onChange(async (value) => {
+            this.plugin.settings.excludeFolders = value;
+            await this.plugin.saveSettings();
+          });
+        });
+
+      new Setting(containerEl)
+        .setName("Include only (glob patterns)")
+        .setDesc(
+          "If set, only index files matching these patterns. Comma-separated. e.g. 'projects/*, onechronos/*'. Empty means all files.",
+        )
+        .addText((text) => {
+          text.setPlaceholder("e.g. projects/*, formal-methods/*");
+          text.setValue(this.plugin.settings.includeGlobs);
+          text.onChange(async (value) => {
+            this.plugin.settings.includeGlobs = value;
+            await this.plugin.saveSettings();
+          });
+        });
+
+      new Setting(containerEl)
+        .setName("Minimum content length")
+        .setDesc("Skip notes shorter than this many characters.")
+        .addText((text) => {
+          text.setValue(String(this.plugin.settings.minContentLength));
+          text.onChange(async (value) => {
+            const n = parseInt(value, 10);
+            if (!isNaN(n) && n >= 0) {
+              this.plugin.settings.minContentLength = n;
+              await this.plugin.saveSettings();
+            }
+          });
+        });
+
+      new Setting(containerEl)
+        .setName("Truncation length")
+        .setDesc("Max characters per note to embed. Longer notes are truncated.")
+        .addText((text) => {
+          text.setValue(String(this.plugin.settings.truncationLength));
+          text.onChange(async (value) => {
+            const n = parseInt(value, 10);
+            if (!isNaN(n) && n > 0) {
+              this.plugin.settings.truncationLength = n;
+              await this.plugin.saveSettings();
+            }
+          });
+        });
+
+      new Setting(containerEl)
+        .setName("Index file path")
+        .setDesc(
+          "Custom path for embeddings.json (relative to vault root). Leave empty for default.",
+        )
+        .addText((text) => {
+          text.setPlaceholder("e.g. .obsidian/vector-index.json");
+          text.setValue(this.plugin.settings.indexPath);
+          text.onChange(async (value) => {
+            this.plugin.settings.indexPath = value.trim();
+            await this.plugin.saveSettings();
+          });
+        });
+    }
   }
 }

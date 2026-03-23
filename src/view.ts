@@ -1,7 +1,7 @@
 import { ItemView, WorkspaceLeaf, setIcon } from "obsidian";
 import type VectorSearchPlugin from "./main";
 import { findSimilar, type SimilarNote } from "./vectors";
-import { embedQuery, isModelLoading } from "./embedder";
+import { embedQuery, isModelLoading, getStatusMessage } from "./embedder";
 
 export const VIEW_TYPE = "vector-search-sidebar";
 
@@ -116,11 +116,8 @@ export class VectorSearchView extends ItemView {
       return;
     }
 
-    this.setStatus(
-      isModelLoading()
-        ? "Loading model..."
-        : "Embedding query...",
-    );
+    const msg = isModelLoading() ? getStatusMessage() || "Loading model..." : "Embedding query...";
+    this.setStatus(msg);
     this.clearResults();
 
     try {
@@ -155,16 +152,17 @@ export class VectorSearchView extends ItemView {
         cls: "vector-search-item",
       });
 
-      const titleEl = item.createDiv({ cls: "vector-search-item-title" });
+      const body = item.createDiv({ cls: "vector-search-item-body" });
+      const titleEl = body.createDiv({ cls: "vector-search-item-title" });
       titleEl.textContent = r.title || r.path;
 
-      const meta = item.createDiv({ cls: "vector-search-item-meta" });
       const folder = r.path.split("/").slice(0, -1).join("/");
       if (folder) {
-        meta.createSpan({ text: folder, cls: "vector-search-item-folder" });
+        body.createDiv({ text: folder, cls: "vector-search-item-folder" });
       }
+
       if (this.plugin.settings.showScores) {
-        meta.createSpan({
+        item.createDiv({
           text: `${(r.score * 100).toFixed(0)}%`,
           cls: "vector-search-item-score",
         });

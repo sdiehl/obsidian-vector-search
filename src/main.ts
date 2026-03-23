@@ -182,6 +182,22 @@ export default class VectorSearchPlugin extends Plugin {
     for (const folder of excluded) {
       if (path.startsWith(folder + "/") || path === folder) return true;
     }
+    // Include globs: if set, only index files matching at least one pattern
+    const includeGlobs = this.settings.includeGlobs
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    if (includeGlobs.length > 0) {
+      const matches = includeGlobs.some((pattern) => {
+        const regex = pattern
+          .replace(/\./g, "\\.")
+          .replace(/\*\*/g, "__.GLOBSTAR__")
+          .replace(/\*/g, "[^/]*")
+          .replace(/__\.GLOBSTAR__/g, ".*");
+        return new RegExp("^" + regex).test(path);
+      });
+      if (!matches) return true;
+    }
     return false;
   }
 
@@ -350,7 +366,39 @@ export default class VectorSearchPlugin extends Plugin {
       prefix += "tags: " + tags.join(", ") + "\n";
     }
 
-    return { text: prefix + body, title };
+    let text = prefix + body;
+
+    // Normalization
+    if (this.settings.stripUrls) {
+      text = text.replace(/https?:\/\/[^\s)>\]]+/g, "");
+    }
+    if (this.settings.stripMarkdown) {
+      text = text
+        .replace(/^#{1,6}\s+/gm, "")       // heading markers
+        .replace(/\*\*([^*]+)\*\*/g, "$1")  // bold
+        .replace(/\*([^*]+)\*/g, "$1")      // italic
+        .replace(/__([^_]+)__/g, "$1")      // bold alt
+        .replace(/_([^_]+)_/g, "$1")        // italic alt
+        .replace(/`{3}[\s\S]*?`{3}/g, "")  // code fences
+        .replace(/`([^`]+)`/g, "$1")        // inline code
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1"); // links
+    }
+    if (this.settings.stripPatterns) {
+      for (const line of this.settings.stripPatterns.split("\n")) {
+        const pat = line.trim();
+        if (pat.length === 0) continue;
+        try {
+          text = text.replace(new RegExp(pat, "g"), "");
+        } catch {
+          // invalid regex, skip
+        }
+      }
+    }
+    if (this.settings.lowercase) {
+      text = text.toLowerCase();
+    }
+
+    return { text, title };
   }
 
   async loadSettings(): Promise<void> {

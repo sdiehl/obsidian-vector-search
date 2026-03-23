@@ -5,7 +5,12 @@ const watch = process.argv.includes("--watch");
 const ctx = await esbuild.context({
   entryPoints: ["src/main.ts"],
   bundle: true,
-  external: ["obsidian", "electron", "@codemirror/*", "@lezer/*"],
+  external: [
+    "obsidian",
+    "electron",
+    "@codemirror/*",
+    "@lezer/*",
+  ],
   format: "cjs",
   target: "es2020",
   outfile: "main.js",
