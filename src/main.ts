@@ -1,6 +1,18 @@
 import { Notice, Plugin, TFile, WorkspaceLeaf, debounce } from "obsidian";
 import { VectorSearchView, VIEW_TYPE } from "./view";
-import type { EmbeddingsIndex } from "./vectors";
+import {
+  createDb,
+  loadDb,
+  saveDb,
+  clearDb,
+  noteCount,
+  upsertNote,
+  removeNote,
+  getNoteMtime,
+  getNoteVec,
+  findSimilar,
+  getAllPaths,
+} from "./vectors";
 import { resetEmbedder, embedQuery } from "./embedder";
 import {
   VectorSearchSettingTab,
@@ -8,10 +20,9 @@ import {
   type VectorSearchSettings,
 } from "./settings";
 
-const EMBEDDINGS_FILE = "embeddings.json";
+const INDEX_FILE = "orama-index.json";
 
 export default class VectorSearchPlugin extends Plugin {
-  index: EmbeddingsIndex | null = null;
   settings: VectorSearchSettings = DEFAULT_SETTINGS;
   indexing = false;
   onIndexProgress: ((done: number, total: number) => void) | null = null;
@@ -67,7 +78,6 @@ export default class VectorSearchPlugin extends Plugin {
     let previousFile: TFile | null = null;
     this.registerEvent(
       this.app.workspace.on("active-leaf-change", () => {
-        // Re-index the file we just left (if it was modified)
         if (previousFile && this.settings.indexMode === "on-save") {
           this.reindexIfStale(previousFile);
         }
@@ -77,7 +87,6 @@ export default class VectorSearchPlugin extends Plugin {
       }),
     );
 
-    // New files and renames
     this.registerEvent(
       this.app.vault.on("create", (file) => {
         if (file instanceof TFile && file.extension === "md" && this.settings.indexMode === "on-save") {
@@ -88,9 +97,7 @@ export default class VectorSearchPlugin extends Plugin {
     this.registerEvent(
       this.app.vault.on("rename", (file, oldPath) => {
         if (file instanceof TFile && file.extension === "md" && this.settings.indexMode !== "readonly") {
-          if (this.index?.notes[oldPath]) {
-            delete this.index.notes[oldPath];
-          }
+          removeNote(oldPath);
           if (this.settings.indexMode === "on-save") {
             this.queueReindex(file.path);
           }
@@ -100,31 +107,23 @@ export default class VectorSearchPlugin extends Plugin {
     this.registerEvent(
       this.app.vault.on("delete", (file) => {
         if (file instanceof TFile && file.extension === "md" && this.settings.indexMode !== "readonly") {
-          if (this.index?.notes[file.path]) {
-            delete this.index.notes[file.path];
-            this.saveIndex();
-          }
+          removeNote(file.path);
+          this.saveIndex();
         }
       }),
     );
 
-    // Wait for layout before starting indexing or refreshing sidebar
     this.app.workspace.onLayoutReady(() => {
       this.setupIndexing();
-
       const view = this.getView();
       if (view) view.showSimilarToActive();
 
-      // Auto-build only if index is truly empty
-      if (
-        this.index &&
-        Object.keys(this.index.notes).length === 0 &&
-        this.settings.indexMode !== "readonly"
-      ) {
-        setTimeout(() => this.rebuildIndex(), 5000);
-      }
+      noteCount().then((n) => {
+        if (n === 0 && this.settings.indexMode !== "readonly") {
+          setTimeout(() => this.rebuildIndex(), 5000);
+        }
+      });
     });
-
   }
 
   async onunload(): Promise<void> {
@@ -155,8 +154,8 @@ export default class VectorSearchPlugin extends Plugin {
   private reindexIfStale(file: TFile): void {
     if (this.isExcluded(file.path)) return;
     const mtime = Math.floor(file.stat.mtime / 1000);
-    const existing = this.index?.notes[file.path];
-    if (existing && existing.mtime === mtime) return;
+    const existing = getNoteMtime(file.path);
+    if (existing !== null && existing === mtime) return;
     this.queueReindex(file.path);
   }
 
@@ -170,7 +169,7 @@ export default class VectorSearchPlugin extends Plugin {
     if (this.settings.indexPath) {
       return this.settings.indexPath;
     }
-    return `${this.manifest.dir}/${EMBEDDINGS_FILE}`;
+    return `${this.manifest.dir}/${INDEX_FILE}`;
   }
 
   async loadIndex(): Promise<void> {
@@ -179,32 +178,50 @@ export default class VectorSearchPlugin extends Plugin {
       const adapter = this.app.vault.adapter;
       if (await adapter.exists(path)) {
         const raw = await adapter.read(path);
-        this.index = JSON.parse(raw) as EmbeddingsIndex;
-        console.log(
-          `Vector Search: loaded ${Object.keys(this.index.notes).length} note embeddings`,
-        );
+        const data = JSON.parse(raw);
+        await loadDb(data);
+        const n = await noteCount();
+        console.log(`Vector Search: loaded ${n} note embeddings`);
       } else {
-        this.index = {
-          model: this.settings.model,
-          dimension: 384,
-          indexed_at: new Date().toISOString(),
-          notes: {},
-        };
+        await createDb();
       }
     } catch (e) {
       console.error("Vector Search: failed to load index", e);
+      await createDb();
     }
   }
 
   async saveIndex(): Promise<void> {
-    if (!this.index || this.settings.indexMode === "readonly") return;
+    if (this.settings.indexMode === "readonly") return;
     try {
       const path = this.getIndexPath();
-      this.index.indexed_at = new Date().toISOString();
-      await this.app.vault.adapter.write(path, JSON.stringify(this.index));
+      const data = await saveDb();
+      if (data) {
+        await this.app.vault.adapter.write(path, JSON.stringify(data));
+      }
     } catch (e) {
       console.error("Vector Search: failed to save index", e);
     }
+  }
+
+  async getNoteCount(): Promise<number> {
+    return noteCount();
+  }
+
+  getNoteVector(path: string): number[] | null {
+    return getNoteVec(path);
+  }
+
+  async findSimilarNotes(
+    vec: number[],
+    excludePath?: string,
+  ): Promise<{ path: string; title: string; score: number }[]> {
+    return findSimilar(
+      vec,
+      excludePath,
+      this.settings.maxResults,
+      this.settings.minScore,
+    );
   }
 
   isFileExcluded(path: string): string | null {
@@ -220,7 +237,6 @@ export default class VectorSearchPlugin extends Plugin {
 
   private isExcluded(path: string): boolean {
     if (this.isFileExcluded(path)) return true;
-    // Include globs: if set, only index files matching at least one pattern
     const includeGlobs = this.settings.includeGlobs
       .split(",")
       .map((s) => s.trim())
@@ -245,15 +261,6 @@ export default class VectorSearchPlugin extends Plugin {
     const paths = [...this.pendingFiles];
     this.pendingFiles.clear();
 
-    if (!this.index) {
-      this.index = {
-        model: this.settings.model,
-        dimension: 384,
-        indexed_at: new Date().toISOString(),
-        notes: {},
-      };
-    }
-
     let count = 0;
     for (const path of paths) {
       try {
@@ -266,7 +273,7 @@ export default class VectorSearchPlugin extends Plugin {
         const truncated = prepared.text.slice(0, this.settings.truncationLength);
         const vec = await embedQuery(truncated, this.settings.model);
         const mtime = Math.floor(file.stat.mtime / 1000);
-        this.index.notes[path] = { v: vec, title: prepared.title, mtime };
+        await upsertNote(path, prepared.title, truncated, mtime, vec);
         count++;
       } catch (e) {
         console.error(`Vector Search: failed to embed ${path}`, e);
@@ -285,8 +292,6 @@ export default class VectorSearchPlugin extends Plugin {
     if (this.indexing || this.settings.indexMode === "readonly") {
       if (this.settings.indexMode === "readonly") {
         new Notice("Vector Search: read-only mode, indexing disabled");
-      } else {
-        new Notice("Vector Search: indexing already in progress");
       }
       return;
     }
@@ -302,28 +307,13 @@ export default class VectorSearchPlugin extends Plugin {
       if (view) view.setIndexingStatus(msg);
     };
 
-    if (!this.index) {
-      this.index = {
-        model: this.settings.model,
-        dimension: 384,
-        indexed_at: new Date().toISOString(),
-        notes: {},
-      };
-    }
-
-    // Keep existing entries, remove deleted/excluded files
+    // Remove notes that no longer exist
     const validPaths = new Set(files.map((f) => f.path));
-    for (const path of Object.keys(this.index.notes)) {
-      if (!validPaths.has(path)) {
-        delete this.index.notes[path];
+    const indexedPaths = await getAllPaths();
+    for (const p of indexedPaths) {
+      if (!validPaths.has(p)) {
+        await removeNote(p);
       }
-    }
-
-    // Model changed: must re-embed everything
-    const modelChanged = this.index.model !== this.settings.model;
-    if (modelChanged) {
-      this.index.notes = {};
-      this.index.model = this.settings.model;
     }
 
     let embedded = 0;
@@ -332,10 +322,9 @@ export default class VectorSearchPlugin extends Plugin {
     for (const file of files) {
       try {
         const mtime = Math.floor(file.stat.mtime / 1000);
-        const existing = this.index.notes[file.path];
+        const existingMtime = getNoteMtime(file.path);
 
-        // Skip if mtime unchanged and already indexed
-        if (existing && existing.mtime === mtime && !modelChanged) {
+        if (existingMtime !== null && existingMtime === mtime) {
           skipped++;
           continue;
         }
@@ -346,7 +335,7 @@ export default class VectorSearchPlugin extends Plugin {
 
         const truncated = prepared.text.slice(0, this.settings.truncationLength);
         const vec = await embedQuery(truncated, this.settings.model);
-        this.index.notes[file.path] = { v: vec, title: prepared.title, mtime };
+        await upsertNote(file.path, prepared.title, truncated, mtime, vec);
         embedded++;
         updateStatus(`Indexing ${embedded + skipped}/${total} (${skipped} cached)...`);
         if (this.onIndexProgress) this.onIndexProgress(embedded + skipped, total);
@@ -356,7 +345,6 @@ export default class VectorSearchPlugin extends Plugin {
       }
     }
 
-    this.index.indexed_at = new Date().toISOString();
     await this.saveIndex();
     this.indexing = false;
     console.log(`Vector Search: ${embedded} embedded, ${skipped} cached, ${errors} errors`);
@@ -371,12 +359,7 @@ export default class VectorSearchPlugin extends Plugin {
       new Notice("Vector Search: read-only mode, cannot clear index");
       return;
     }
-    this.index = {
-      model: this.settings.model,
-      dimension: 384,
-      indexed_at: new Date().toISOString(),
-      notes: {},
-    };
+    await clearDb();
     await this.saveIndex();
     new Notice("Vector Search: index cleared");
     const view = this.getView();
@@ -433,20 +416,19 @@ export default class VectorSearchPlugin extends Plugin {
 
     let text = prefix + body;
 
-    // Normalization
     if (this.settings.stripUrls) {
       text = text.replace(/https?:\/\/[^\s)>\]]+/g, "");
     }
     if (this.settings.stripMarkdown) {
       text = text
-        .replace(/^#{1,6}\s+/gm, "")       // heading markers
-        .replace(/\*\*([^*]+)\*\*/g, "$1")  // bold
-        .replace(/\*([^*]+)\*/g, "$1")      // italic
-        .replace(/__([^_]+)__/g, "$1")      // bold alt
-        .replace(/_([^_]+)_/g, "$1")        // italic alt
-        .replace(/`{3}[\s\S]*?`{3}/g, "")  // code fences
-        .replace(/`([^`]+)`/g, "$1")        // inline code
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1"); // links
+        .replace(/^#{1,6}\s+/gm, "")
+        .replace(/\*\*([^*]+)\*\*/g, "$1")
+        .replace(/\*([^*]+)\*/g, "$1")
+        .replace(/__([^_]+)__/g, "$1")
+        .replace(/_([^_]+)_/g, "$1")
+        .replace(/`{3}[\s\S]*?`{3}/g, "")
+        .replace(/`([^`]+)`/g, "$1")
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
     }
     if (this.settings.stripPatterns) {
       for (const line of this.settings.stripPatterns.split("\n")) {
@@ -455,7 +437,7 @@ export default class VectorSearchPlugin extends Plugin {
         try {
           text = text.replace(new RegExp(pat, "g"), "");
         } catch {
-          // invalid regex, skip
+          // invalid regex
         }
       }
     }
@@ -471,16 +453,15 @@ export default class VectorSearchPlugin extends Plugin {
       const path = `${this.manifest.dir}/.gitignore`;
       const adapter = this.app.vault.adapter;
       if (!(await adapter.exists(path))) {
-        await adapter.write(path, "embeddings.json\ndata.json\n");
+        await adapter.write(path, "embeddings.json\norama-index.json\ndata.json\n");
       }
     } catch {
-      // Non-critical, ignore
+      // Non-critical
     }
   }
 
   async loadSettings(): Promise<void> {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-    // Migrate old "on-change" to "on-save"
     if ((this.settings.indexMode as string) === "on-change") {
       this.settings.indexMode = "on-save";
     }

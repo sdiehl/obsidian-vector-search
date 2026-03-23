@@ -78,9 +78,11 @@ export class VectorSearchSettingTab extends PluginSettingTab {
     containerEl.createEl("h2", { text: "Vector Search Settings" });
 
     // -- Index management --
-    const indexInfo = this.plugin.index
-      ? `${Object.keys(this.plugin.index.notes).length} notes indexed`
-      : "No index";
+    let indexInfo = "Loading...";
+    this.plugin.getNoteCount().then((n) => {
+      indexInfo = n > 0 ? `${n} notes indexed` : "No index";
+      indexSetting.setDesc(indexInfo);
+    });
 
     const indexSetting = new Setting(containerEl)
       .setName("Index")
@@ -102,7 +104,7 @@ export class VectorSearchSettingTab extends PluginSettingTab {
             await this.plugin.rebuildIndex();
             this.plugin.onIndexProgress = null;
             const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-            const notes = Object.keys(this.plugin.index?.notes || {}).length;
+            const notes = await this.plugin.getNoteCount();
             progressEl.textContent = `Done: ${notes} notes indexed in ${elapsed}s`;
             btn.setDisabled(false);
             btn.setButtonText("Rebuild");

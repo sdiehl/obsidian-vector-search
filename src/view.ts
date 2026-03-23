@@ -1,9 +1,14 @@
 import { ItemView, WorkspaceLeaf, setIcon } from "obsidian";
 import type VectorSearchPlugin from "./main";
-import { findSimilar, type SimilarNote } from "./vectors";
 import { embedQuery, isModelLoading, getStatusMessage } from "./embedder";
 
 export const VIEW_TYPE = "vector-search-sidebar";
+
+interface ResultItem {
+  path: string;
+  title: string;
+  score: number;
+}
 
 export class VectorSearchView extends ItemView {
   plugin: VectorSearchPlugin;
@@ -35,7 +40,6 @@ export class VectorSearchView extends ItemView {
     container.empty();
     container.addClass("vector-search-container");
 
-    // Search bar
     const searchWrapper = container.createDiv({ cls: "vector-search-bar" });
     this.searchInput = searchWrapper.createEl("input", {
       type: "text",
@@ -56,17 +60,12 @@ export class VectorSearchView extends ItemView {
       this.showSimilarToActive();
     });
 
-    // Status
     this.statusEl = container.createDiv({ cls: "vector-search-status" });
 
-    // Results
     this.resultsContainer = container.createDiv({
       cls: "vector-search-results",
     });
 
-    // Prevent the results area from stealing focus (avoids the
-    // "click once to focus sidebar, click again to navigate" issue).
-    // The search input remains focusable normally.
     this.resultsContainer.addEventListener("mousedown", (e: MouseEvent) => {
       if (!(e.target instanceof HTMLInputElement)) {
         e.preventDefault();
@@ -85,12 +84,6 @@ export class VectorSearchView extends ItemView {
 
   showSimilarToActive(): void {
     if (this.mode === "search") return;
-    const index = this.plugin.index;
-    if (!index || Object.keys(index.notes).length === 0) {
-      this.setStatus("No embeddings loaded.");
-      this.clearResults();
-      return;
-    }
 
     const activeFile = this.app.workspace.getActiveFile();
     if (!activeFile) {
@@ -99,28 +92,33 @@ export class VectorSearchView extends ItemView {
       return;
     }
 
-    const entry = index.notes[activeFile.path];
-    if (!entry || !entry.v) {
-      const excluded = this.plugin.isFileExcluded(activeFile.path);
+    // Async: get vector and find similar
+    this.doShowSimilar(activeFile.path, activeFile.basename);
+  }
+
+  private async doShowSimilar(path: string, basename: string): Promise<void> {
+    const n = await this.plugin.getNoteCount();
+    if (n === 0) {
+      this.setStatus("No embeddings loaded.");
+      this.clearResults();
+      return;
+    }
+
+    const vec = await this.plugin.getNoteVector(path);
+    if (!vec) {
+      const excluded = this.plugin.isFileExcluded(path);
       if (excluded) {
-        this.setStatus(`"${activeFile.basename}" is in excluded folder "${excluded}"`);
+        this.setStatus(`"${basename}" is in excluded folder "${excluded}"`);
       } else {
-        this.setStatus(`"${activeFile.basename}" is not indexed`);
+        this.setStatus(`"${basename}" is not indexed`);
         this.showRebuildButton();
       }
       this.clearResults();
       return;
     }
 
-    const similar = findSimilar(
-      entry.v,
-      index,
-      activeFile.path,
-      this.plugin.settings.maxResults,
-    ).filter((r) => r.score >= this.plugin.settings.minScore);
-    this.setStatus(
-      `Similar to "${activeFile.basename}" (${Object.keys(index.notes).length} notes indexed)`,
-    );
+    const similar = await this.plugin.findSimilarNotes(vec, path);
+    this.setStatus(`Similar to "${basename}" (${n} notes indexed)`);
     this.renderResults(similar);
   }
 
@@ -131,8 +129,9 @@ export class VectorSearchView extends ItemView {
       return;
     }
     this.mode = "search";
-    const index = this.plugin.index;
-    if (!index) {
+
+    const n = await this.plugin.getNoteCount();
+    if (n === 0) {
       this.setStatus("No embeddings loaded");
       return;
     }
@@ -143,12 +142,7 @@ export class VectorSearchView extends ItemView {
 
     try {
       const queryVec = await embedQuery(query, this.plugin.settings.model);
-      const results = findSimilar(
-        queryVec,
-        index,
-        undefined,
-        this.plugin.settings.maxResults,
-      ).filter((r) => r.score >= this.plugin.settings.minScore);
+      const results = await this.plugin.findSimilarNotes(queryVec);
       this.setStatus(`Results for "${query}"`);
       this.renderResults(results);
     } catch (e: any) {
@@ -185,7 +179,7 @@ export class VectorSearchView extends ItemView {
     });
   }
 
-  private renderResults(results: SimilarNote[]): void {
+  private renderResults(results: ResultItem[]): void {
     if (!this.resultsContainer) return;
     this.resultsContainer.empty();
 
@@ -209,15 +203,12 @@ export class VectorSearchView extends ItemView {
       }
 
       item.addEventListener("auxclick", (e: MouseEvent) => {
-        // Middle click opens in new tab
         if (e.button === 1) {
           this.app.workspace.openLinkText(r.path, "", "tab");
         }
       });
       item.addEventListener("pointerdown", (e: PointerEvent) => {
         if (e.button !== 0) return;
-        // Navigate immediately on pointerdown, before Obsidian's leaf
-        // activation steals focus and swallows the click event.
         e.preventDefault();
         this.app.workspace.openLinkText(r.path, "", false);
       });
