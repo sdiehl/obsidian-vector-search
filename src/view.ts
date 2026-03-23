@@ -92,8 +92,9 @@ export class VectorSearchView extends ItemView {
       return;
     }
 
-    // Async: get vector and find similar
-    this.doShowSimilar(activeFile.path, activeFile.basename);
+    this.doShowSimilar(activeFile.path, activeFile.basename).catch((e) =>
+      console.error("Vector Search: sidebar error", e),
+    );
   }
 
   private async doShowSimilar(path: string, basename: string): Promise<void> {
@@ -104,17 +105,31 @@ export class VectorSearchView extends ItemView {
       return;
     }
 
-    const vec = await this.plugin.getNoteVector(path);
+    let vec = this.plugin.getNoteVector(path);
     if (!vec) {
       const excluded = this.plugin.isFileExcluded(path);
       if (excluded) {
         this.setStatus(`"${basename}" is in excluded folder "${excluded}"`);
-      } else {
-        this.setStatus(`"${basename}" is not indexed`);
-        this.showRebuildButton();
+        this.clearResults();
+        return;
       }
-      this.clearResults();
-      return;
+      // Auto-index this note immediately instead of showing "not indexed"
+      if (this.plugin.settings.indexMode !== "readonly" && this.plugin.settings.indexMode !== "manual") {
+        this.setStatus(`Indexing "${basename}"...`);
+        this.clearResults();
+        try {
+          await this.plugin.indexSingleNote(path);
+          vec = this.plugin.getNoteVector(path);
+        } catch {
+          // Fall through to not-indexed state
+        }
+      }
+      if (!vec) {
+        this.setStatus(`"${basename}" is not indexed (content may be too short, min ${this.plugin.settings.minContentLength} chars)`);
+        this.clearResults();
+        this.showRebuildButton();
+        return;
+      }
     }
 
     const similar = await this.plugin.findSimilarNotes(vec, path);

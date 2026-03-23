@@ -93,11 +93,21 @@ export default class VectorSearchPlugin extends Plugin {
       }),
     );
 
-    // Re-index on file save (modify fires when Obsidian writes to disk)
+    // Re-index on file save. The mtime check inside indexSingleNote
+    // ensures we only re-embed when content actually changed.
     this.registerEvent(
       this.app.vault.on("modify", (file) => {
         if (file instanceof TFile && file.extension === "md" && this.settings.indexMode === "on-save") {
-          this.queueReindex(file.path);
+          if (!this.isExcluded(file.path)) {
+            this.indexSingleNote(file.path)
+              .then((changed) => {
+                if (changed) {
+                  const view = this.getView();
+                  if (view) view.showSimilarToActive();
+                }
+              })
+              .catch((e) => console.error("Vector Search: reindex failed", e));
+          }
         }
       }),
     );
@@ -302,6 +312,22 @@ export default class VectorSearchPlugin extends Plugin {
       const view = this.getView();
       if (view) view.showSimilarToActive();
     }
+  }
+
+  async indexSingleNote(path: string): Promise<boolean> {
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile)) return false;
+    const mtime = Math.floor(file.stat.mtime / 1000);
+    const existing = getNoteMtime(path);
+    if (existing !== null && existing === mtime) return false;
+    const raw = await this.app.vault.cachedRead(file);
+    const prepared = this.prepareContent(raw, path, file.basename);
+    if (prepared.text.length < this.settings.minContentLength) return false;
+    const truncated = prepared.text.slice(0, this.settings.truncationLength);
+    const vec = await embedQuery(truncated, this.settings.model);
+    await upsertNote(path, prepared.title, truncated, mtime, vec);
+    await this.saveIndex();
+    return true;
   }
 
   async rebuildIndex(): Promise<void> {
