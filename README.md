@@ -2,56 +2,33 @@
 
 [![CI](https://github.com/sdiehl/obsidian-vector-search/actions/workflows/ci.yml/badge.svg)](https://github.com/sdiehl/obsidian-vector-search/actions/workflows/ci.yml)
 
-Semantic similarity sidebar for Obsidian. Sidebar for related notes using vector embeddings.
+Semantic similarity sidebar for Obsidian. Shows related notes using vector embeddings. Uses [Orama](https://github.com/oramasearch/orama) under the hood for search.
 
 ## Install
-
-### Desktop (Mac/Linux/Windows)
 
 ```bash
 git clone https://github.com/sdiehl/obsidian-vector-search.git
 cd obsidian-vector-search
 npm install && npm run build   # or: yarn install && yarn build
-```
-
-Deploy to your vault:
-
-```bash
 OBSIDIAN_VAULT=/path/to/vault npm run deploy
 ```
 
-Enable "Vector Search" in Settings > Community Plugins. The plugin automatically builds the index on first launch and keeps it updated as you edit notes. Re-run `npm run deploy` after pulling updates.
+Enable "Vector Search" in Settings > Community Plugins. The plugin builds the index automatically on first launch. The deploy script also adds the index file to your vault's `.gitignore`.
 
-If your vault is under git, add `embeddings.json` to your vault's `.gitignore`:
+Re-run `npm run deploy` after pulling updates.
 
-```
-.obsidian/plugins/obsidian-vector-search/embeddings.json
-```
+### iOS / iPad
 
-### iPad
-
-Set indexing mode to **Read-only (iPad mode)** in Settings > Vector Search. The index file syncs from your Mac via Obsidian Sync or iCloud. The sidebar shows similar notes instantly. Ad-hoc search downloads the embedding model (~23MB) on first use, cached after that.
+Set indexing mode to **Read-only (iPad mode)** in Settings > Vector Search. The index syncs from your Mac via Obsidian Sync or iCloud. The sidebar works instantly. Ad-hoc search downloads the embedding model (~23MB) on first use, cached after that.
 
 ## Usage
 
-Open the sidebar via the ribbon icon or `Cmd+P` > "Open vector search sidebar". Navigate to any note to see semantically similar notes ranked by cosine similarity. Type a query in the search bar for ad-hoc semantic search.
+Open the sidebar via the ribbon icon or `Cmd+P` > "Open vector search sidebar".
 
-## CLI indexer (optional)
-
-For power users who prefer CLI-based indexing:
-
-```bash
-node scripts/index.mjs --vault <path> [options]
-
-  --model <id>            Embedding model (default: Xenova/all-MiniLM-L6-v2)
-  --exclude <dirs>        Comma-separated folders to skip (default: daily,scratch,templates)
-  --truncate <n>          Max chars per note (default: 2000)
-  --output <path>         Custom output path for embeddings.json
-  --no-frontmatter        Strip frontmatter tags from embedded text
-  --title-weight <n>      Prepend title N times (default: 1, 0 to disable)
-  --include-path          Prepend file path to content
-  --min-length <n>        Skip notes shorter than N chars (default: 20)
-```
+- **Similar notes**: Navigate to any note to see semantically related notes ranked by similarity.
+- **Semantic search**: Type a query in the search bar and press Enter.
+- **Auto-indexing**: Notes are re-indexed on save. New and renamed notes are indexed automatically.
+- **Rebuild**: Use Settings > Vector Search > Rebuild to re-index the entire vault.
 
 ## License
 
