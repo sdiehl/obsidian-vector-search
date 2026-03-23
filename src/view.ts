@@ -91,9 +91,14 @@ export class VectorSearchView extends ItemView {
 
     const entry = index.notes[activeFile.path];
     if (!entry) {
-      this.setStatus(`"${activeFile.basename}" is not indexed`);
+      const excluded = this.plugin.isFileExcluded(activeFile.path);
+      if (excluded) {
+        this.setStatus(`"${activeFile.basename}" is in excluded folder "${excluded}"`);
+      } else {
+        this.setStatus(`"${activeFile.basename}" is not indexed`);
+        this.showRebuildButton();
+      }
       this.clearResults();
-      this.showRebuildButton();
       return;
     }
 
@@ -195,11 +200,10 @@ export class VectorSearchView extends ItemView {
         });
       }
 
-      item.addEventListener("click", () => {
-        const file = this.app.vault.getAbstractFileByPath(r.path);
-        if (file) {
-          this.app.workspace.openLinkText(r.path, "", false);
-        }
+      item.addEventListener("click", (e: MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.app.workspace.openLinkText(r.path, "", false);
       });
     }
   }

@@ -180,14 +180,19 @@ export default class VectorSearchPlugin extends Plugin {
     }
   }
 
-  private isExcluded(path: string): boolean {
+  isFileExcluded(path: string): string | null {
     const excluded = this.settings.excludeFolders
       .split(",")
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
     for (const folder of excluded) {
-      if (path.startsWith(folder + "/") || path === folder) return true;
+      if (path.startsWith(folder + "/") || path === folder) return folder;
     }
+    return null;
+  }
+
+  private isExcluded(path: string): boolean {
+    if (this.isFileExcluded(path)) return true;
     // Include globs: if set, only index files matching at least one pattern
     const includeGlobs = this.settings.includeGlobs
       .split(",")

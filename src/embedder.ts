@@ -22,6 +22,12 @@ async function loadModel(model) {
   );
   env.allowLocalModels = false;
   env.useBrowserCache = true;
+  // Disable WASM threading. SharedArrayBuffer is not available in
+  // Obsidian's Electron context (requires COOP/COEP headers).
+  if (env.backends?.onnx?.wasm) {
+    env.backends.onnx.wasm.numThreads = 1;
+    env.backends.onnx.wasm.proxy = false;
+  }
   pipeline = await createPipeline('feature-extraction', model, { dtype: 'q8' });
 }
 
