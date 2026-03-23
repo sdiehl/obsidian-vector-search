@@ -1,0 +1,9 @@
+{
+  "id": "obsidian-vector-search",
+  "name": "Vector Search",
+  "version": "0.1.0",
+  "minAppVersion": "1.0.0",
+  "description": "Semantic similarity sidebar powered by precomputed vector embeddings.",
+  "author": "Stephen Diehl",
+  "isDesktopOnly": false
+}
