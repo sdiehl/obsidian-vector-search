@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { copyFileSync, mkdirSync } from "fs";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
 
 const vault = process.argv[2] || process.env.OBSIDIAN_VAULT;
@@ -19,6 +19,20 @@ mkdirSync(dest, { recursive: true });
 for (const file of ["main.js", "manifest.json", "styles.css"]) {
   copyFileSync(file, join(dest, file));
   console.log(`  ${file} -> ${dest}/`);
+}
+
+// Add embeddings.json to vault .gitignore if not already present
+const gitignorePath = join(vault, ".gitignore");
+const ignoreEntry = ".obsidian/plugins/obsidian-vector-search/embeddings.json";
+if (existsSync(gitignorePath)) {
+  const content = readFileSync(gitignorePath, "utf-8");
+  if (!content.includes(ignoreEntry)) {
+    writeFileSync(gitignorePath, content.trimEnd() + "\n" + ignoreEntry + "\n");
+    console.log("  Added embeddings.json to vault .gitignore");
+  }
+} else if (existsSync(join(vault, ".git"))) {
+  writeFileSync(gitignorePath, ignoreEntry + "\n");
+  console.log("  Created vault .gitignore with embeddings.json entry");
 }
 
 console.log("Deployed. Reload Obsidian to pick up changes.");

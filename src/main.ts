@@ -26,6 +26,7 @@ export default class VectorSearchPlugin extends Plugin {
   async onload(): Promise<void> {
     await this.loadSettings();
     await this.loadIndex();
+    await this.ensureGitignore();
 
     this.addSettingTab(new VectorSearchSettingTab(this.app, this));
 
@@ -411,6 +412,18 @@ export default class VectorSearchPlugin extends Plugin {
     }
 
     return { text, title };
+  }
+
+  private async ensureGitignore(): Promise<void> {
+    try {
+      const path = `${this.manifest.dir}/.gitignore`;
+      const adapter = this.app.vault.adapter;
+      if (!(await adapter.exists(path))) {
+        await adapter.write(path, "embeddings.json\ndata.json\n");
+      }
+    } catch {
+      // Non-critical, ignore
+    }
   }
 
   async loadSettings(): Promise<void> {

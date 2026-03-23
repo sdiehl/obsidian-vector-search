@@ -22,6 +22,12 @@ OBSIDIAN_VAULT=/path/to/vault npm run deploy
 
 Enable "Vector Search" in Settings > Community Plugins. The plugin automatically builds the index on first launch and keeps it updated as you edit notes. Re-run `npm run deploy` after pulling updates.
 
+If your vault is under git, add `embeddings.json` to your vault's `.gitignore`:
+
+```
+.obsidian/plugins/obsidian-vector-search/embeddings.json
+```
+
 ### iPad
 
 Set indexing mode to **Read-only (iPad mode)** in Settings > Vector Search. The index file syncs from your Mac via Obsidian Sync or iCloud. The sidebar shows similar notes instantly. Ad-hoc search downloads the embedding model (~23MB) on first use, cached after that.
