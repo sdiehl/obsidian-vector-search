@@ -32,7 +32,7 @@ export default class VectorSearchPlugin extends Plugin {
 
   constructor(app: any, manifest: any) {
     super(app, manifest);
-    this.flushPending = debounce(() => this.reindexPending(), 10_000, true);
+    this.flushPending = debounce(() => this.reindexPending(), 5_000, true);
   }
 
   async onload(): Promise<void> {
@@ -74,12 +74,18 @@ export default class VectorSearchPlugin extends Plugin {
       callback: () => this.rebuildIndex(),
     });
 
-    // Update sidebar and re-index previous file on leaf change
+    // Update sidebar and re-index previous file on leaf change.
+    // When you navigate away from a note, we check if it changed
+    // since we last indexed it and re-embed if so.
     let previousFile: TFile | null = null;
     this.registerEvent(
       this.app.workspace.on("active-leaf-change", () => {
         if (previousFile && this.settings.indexMode === "on-save") {
-          this.reindexIfStale(previousFile);
+          // Re-read the TFile to get fresh mtime (the cached reference may be stale)
+          const freshFile = this.app.vault.getAbstractFileByPath(previousFile.path);
+          if (freshFile instanceof TFile) {
+            this.reindexIfStale(freshFile);
+          }
         }
         previousFile = this.app.workspace.getActiveFile();
         const view = this.getView();
@@ -87,9 +93,17 @@ export default class VectorSearchPlugin extends Plugin {
       }),
     );
 
+    // Re-index on file save (modify fires when Obsidian writes to disk)
+    this.registerEvent(
+      this.app.vault.on("modify", (file) => {
+        if (file instanceof TFile && file.extension === "md" && this.settings.indexMode === "on-save") {
+          this.queueReindex(file.path);
+        }
+      }),
+    );
     this.registerEvent(
       this.app.vault.on("create", (file) => {
-        if (file instanceof TFile && file.extension === "md" && this.settings.indexMode === "on-save") {
+        if (file instanceof TFile && file.extension === "md" && this.settings.indexMode !== "readonly") {
           this.queueReindex(file.path);
         }
       }),
@@ -98,9 +112,8 @@ export default class VectorSearchPlugin extends Plugin {
       this.app.vault.on("rename", (file, oldPath) => {
         if (file instanceof TFile && file.extension === "md" && this.settings.indexMode !== "readonly") {
           removeNote(oldPath);
-          if (this.settings.indexMode === "on-save") {
-            this.queueReindex(file.path);
-          }
+          // Always reindex on rename (path changed, title may have changed)
+          this.queueReindex(file.path);
         }
       }),
     );
@@ -266,13 +279,16 @@ export default class VectorSearchPlugin extends Plugin {
       try {
         const file = this.app.vault.getAbstractFileByPath(path);
         if (!(file instanceof TFile)) continue;
+        const mtime = Math.floor(file.stat.mtime / 1000);
+        const existing = getNoteMtime(path);
+        if (existing !== null && existing === mtime) continue;
+
         const raw = await this.app.vault.cachedRead(file);
         const prepared = this.prepareContent(raw, path, file.basename);
         if (prepared.text.length < this.settings.minContentLength) continue;
 
         const truncated = prepared.text.slice(0, this.settings.truncationLength);
         const vec = await embedQuery(truncated, this.settings.model);
-        const mtime = Math.floor(file.stat.mtime / 1000);
         await upsertNote(path, prepared.title, truncated, mtime, vec);
         count++;
       } catch (e) {
@@ -453,7 +469,7 @@ export default class VectorSearchPlugin extends Plugin {
       const path = `${this.manifest.dir}/.gitignore`;
       const adapter = this.app.vault.adapter;
       if (!(await adapter.exists(path))) {
-        await adapter.write(path, "embeddings.json\norama-index.json\ndata.json\n");
+        await adapter.write(path, "embeddings.json\norama-index.json\ndata.json\ndebug.log\n");
       }
     } catch {
       // Non-critical
