@@ -100,7 +100,7 @@ export class VectorSearchView extends ItemView {
     }
 
     const entry = index.notes[activeFile.path];
-    if (!entry) {
+    if (!entry || !entry.v) {
       const excluded = this.plugin.isFileExcluded(activeFile.path);
       if (excluded) {
         this.setStatus(`"${activeFile.basename}" is in excluded folder "${excluded}"`);

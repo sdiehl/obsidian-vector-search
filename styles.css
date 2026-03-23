@@ -93,6 +93,12 @@
   flex-shrink: 0;
 }
 
+.vector-search-progress {
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .vector-search-rebuild-btn {
   margin: 12px 10px;
   padding: 6px 12px;

@@ -39,6 +39,7 @@ export function findSimilar(
   const results: SimilarNote[] = [];
   for (const [path, entry] of Object.entries(index.notes)) {
     if (path === excludePath) continue;
+    if (!entry.v || !queryVec) continue;
     const score = cosineSimilarity(queryVec, entry.v);
     results.push({ path, title: entry.title, score });
   }

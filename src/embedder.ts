@@ -3,6 +3,8 @@ let ready = false;
 let loading = false;
 let loadError: string | null = null;
 let statusMessage = "";
+let modelLoaded = false;
+let loadedModelName = "";
 let pendingId = 0;
 const pending = new Map<number, { resolve: (v: number[]) => void; reject: (e: Error) => void }>();
 
@@ -37,6 +39,7 @@ async function embed(text) {
 }
 
 window.addEventListener('message', async (e) => {
+  if (!e.data || typeof e.data !== 'object' || !e.data.method) return;
   const { id, method, args } = e.data;
   try {
     let result;
@@ -45,6 +48,8 @@ window.addEventListener('message', async (e) => {
       result = { ok: true };
     } else if (method === 'embed') {
       result = await embed(args.text);
+    } else {
+      return;
     }
     parent.postMessage({ id, result }, '*');
   } catch (err) {
@@ -82,7 +87,8 @@ function sendToIframe(method: string, args: Record<string, any>): Promise<any> {
 
 function setupMessageHandler(): void {
   window.addEventListener("message", (e: MessageEvent) => {
-    const { id, result, error } = e.data || {};
+    if (!e.data || typeof e.data !== "object" || typeof e.data.id === "undefined") return;
+    const { id, result, error } = e.data;
     if (id === 0 && result?.ready) {
       ready = true;
       return;
@@ -137,18 +143,21 @@ export async function embedQuery(
     throw new Error("Failed to initialize embedding runtime");
   }
 
-  try {
-    if (!ready) {
-      throw new Error("Embedding runtime failed to initialize");
-    }
-    statusMessage = "Loading embedding model (first time may download ~23MB)...";
-    loading = true;
-    await sendToIframe("load", { model });
+  if (!ready) {
     loading = false;
-    statusMessage = "";
-  } catch (e: any) {
-    // If load was already done, the iframe throws but pipeline exists
-    if (!e.message.includes("already")) {
+    throw new Error("Embedding runtime failed to initialize");
+  }
+
+  if (!modelLoaded || loadedModelName !== model) {
+    try {
+      statusMessage = "Loading embedding model (first time may download ~23MB)...";
+      loading = true;
+      await sendToIframe("load", { model });
+      modelLoaded = true;
+      loadedModelName = model;
+      loading = false;
+      statusMessage = "";
+    } catch (e: any) {
       loading = false;
       loadError = e.message;
       statusMessage = "";
@@ -171,6 +180,8 @@ export function resetEmbedder(): void {
   loading = false;
   loadError = null;
   statusMessage = "";
+  modelLoaded = false;
+  loadedModelName = "";
   pending.clear();
 }
 

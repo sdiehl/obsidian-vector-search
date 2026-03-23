@@ -14,6 +14,7 @@ export default class VectorSearchPlugin extends Plugin {
   index: EmbeddingsIndex | null = null;
   settings: VectorSearchSettings = DEFAULT_SETTINGS;
   indexing = false;
+  onIndexProgress: ((done: number, total: number) => void) | null = null;
   private pendingFiles: Set<string> = new Set();
   private flushPending: () => void;
   private intervalTimer: ReturnType<typeof setInterval> | null = null;
@@ -24,9 +25,21 @@ export default class VectorSearchPlugin extends Plugin {
   }
 
   async onload(): Promise<void> {
-    await this.loadSettings();
-    await this.loadIndex();
-    await this.ensureGitignore();
+    try {
+      await this.loadSettings();
+    } catch (e) {
+      console.error("Vector Search: failed to load settings", e);
+    }
+    try {
+      await this.loadIndex();
+    } catch (e) {
+      console.error("Vector Search: failed to load index", e);
+    }
+    try {
+      await this.ensureGitignore();
+    } catch {
+      // non-critical
+    }
 
     this.addSettingTab(new VectorSearchSettingTab(this.app, this));
 
@@ -50,36 +63,37 @@ export default class VectorSearchPlugin extends Plugin {
       callback: () => this.rebuildIndex(),
     });
 
-    // Update sidebar when active file changes
+    // Update sidebar and re-index previous file on leaf change
+    let previousFile: TFile | null = null;
     this.registerEvent(
       this.app.workspace.on("active-leaf-change", () => {
+        // Re-index the file we just left (if it was modified)
+        if (previousFile && this.settings.indexMode === "on-save") {
+          this.reindexIfStale(previousFile);
+        }
+        previousFile = this.app.workspace.getActiveFile();
         const view = this.getView();
         if (view) view.showSimilarToActive();
       }),
     );
 
-    // File change listeners (gated by indexMode in the handler)
-    this.registerEvent(
-      this.app.vault.on("modify", (file) => {
-        if (file instanceof TFile && file.extension === "md") {
-          this.onFileChanged(file.path);
-        }
-      }),
-    );
+    // New files and renames
     this.registerEvent(
       this.app.vault.on("create", (file) => {
-        if (file instanceof TFile && file.extension === "md") {
-          this.onFileChanged(file.path);
+        if (file instanceof TFile && file.extension === "md" && this.settings.indexMode === "on-save") {
+          this.queueReindex(file.path);
         }
       }),
     );
     this.registerEvent(
       this.app.vault.on("rename", (file, oldPath) => {
-        if (file instanceof TFile && file.extension === "md") {
+        if (file instanceof TFile && file.extension === "md" && this.settings.indexMode !== "readonly") {
           if (this.index?.notes[oldPath]) {
             delete this.index.notes[oldPath];
           }
-          this.onFileChanged(file.path);
+          if (this.settings.indexMode === "on-save") {
+            this.queueReindex(file.path);
+          }
         }
       }),
     );
@@ -94,22 +108,23 @@ export default class VectorSearchPlugin extends Plugin {
       }),
     );
 
-    this.setupIndexing();
-
-    // Auto-build on first load if empty and not readonly
-    if (
-      this.index &&
-      Object.keys(this.index.notes).length === 0 &&
-      this.settings.indexMode !== "readonly"
-    ) {
-      setTimeout(() => this.rebuildIndex(), 3000);
-    }
-
-    // Refresh sidebar once layout is ready (active file may not be set during onOpen)
+    // Wait for layout before starting indexing or refreshing sidebar
     this.app.workspace.onLayoutReady(() => {
+      this.setupIndexing();
+
       const view = this.getView();
       if (view) view.showSimilarToActive();
+
+      // Auto-build only if index is truly empty
+      if (
+        this.index &&
+        Object.keys(this.index.notes).length === 0 &&
+        this.settings.indexMode !== "readonly"
+      ) {
+        setTimeout(() => this.rebuildIndex(), 5000);
+      }
     });
+
   }
 
   async onunload(): Promise<void> {
@@ -122,7 +137,11 @@ export default class VectorSearchPlugin extends Plugin {
     this.flushPending = debounce(() => this.reindexPending(), ms, true);
 
     if (this.settings.indexMode === "interval") {
-      this.intervalTimer = setInterval(() => this.rebuildIndex(), ms);
+      this.intervalTimer = setInterval(() => {
+        this.rebuildIndex().catch((e) =>
+          console.error("Vector Search: interval rebuild failed", e),
+        );
+      }, ms);
     }
   }
 
@@ -133,8 +152,15 @@ export default class VectorSearchPlugin extends Plugin {
     }
   }
 
-  private onFileChanged(path: string): void {
-    if (this.settings.indexMode !== "on-change") return;
+  private reindexIfStale(file: TFile): void {
+    if (this.isExcluded(file.path)) return;
+    const mtime = Math.floor(file.stat.mtime / 1000);
+    const existing = this.index?.notes[file.path];
+    if (existing && existing.mtime === mtime) return;
+    this.queueReindex(file.path);
+  }
+
+  private queueReindex(path: string): void {
     if (this.isExcluded(path)) return;
     this.pendingFiles.add(path);
     this.flushPending();
@@ -276,38 +302,64 @@ export default class VectorSearchPlugin extends Plugin {
       if (view) view.setIndexingStatus(msg);
     };
 
-    updateStatus(`Indexing 0/${total}...`);
+    if (!this.index) {
+      this.index = {
+        model: this.settings.model,
+        dimension: 384,
+        indexed_at: new Date().toISOString(),
+        notes: {},
+      };
+    }
 
-    this.index = {
-      model: this.settings.model,
-      dimension: 384,
-      indexed_at: new Date().toISOString(),
-      notes: {},
-    };
+    // Keep existing entries, remove deleted/excluded files
+    const validPaths = new Set(files.map((f) => f.path));
+    for (const path of Object.keys(this.index.notes)) {
+      if (!validPaths.has(path)) {
+        delete this.index.notes[path];
+      }
+    }
 
-    let count = 0;
+    // Model changed: must re-embed everything
+    const modelChanged = this.index.model !== this.settings.model;
+    if (modelChanged) {
+      this.index.notes = {};
+      this.index.model = this.settings.model;
+    }
+
+    let embedded = 0;
+    let skipped = 0;
     let errors = 0;
     for (const file of files) {
       try {
+        const mtime = Math.floor(file.stat.mtime / 1000);
+        const existing = this.index.notes[file.path];
+
+        // Skip if mtime unchanged and already indexed
+        if (existing && existing.mtime === mtime && !modelChanged) {
+          skipped++;
+          continue;
+        }
+
         const raw = await this.app.vault.cachedRead(file);
         const prepared = this.prepareContent(raw, file.path, file.basename);
         if (prepared.text.length < this.settings.minContentLength) continue;
 
         const truncated = prepared.text.slice(0, this.settings.truncationLength);
         const vec = await embedQuery(truncated, this.settings.model);
-        const mtime = Math.floor(file.stat.mtime / 1000);
         this.index.notes[file.path] = { v: vec, title: prepared.title, mtime };
-        count++;
-        updateStatus(`Indexing ${count}/${total}...`);
+        embedded++;
+        updateStatus(`Indexing ${embedded + skipped}/${total} (${skipped} cached)...`);
+        if (this.onIndexProgress) this.onIndexProgress(embedded + skipped, total);
       } catch (e) {
         errors++;
         console.error(`Vector Search: failed to embed ${file.path}`, e);
       }
     }
 
+    this.index.indexed_at = new Date().toISOString();
     await this.saveIndex();
     this.indexing = false;
-    console.log(`Vector Search: indexed ${count} notes` + (errors > 0 ? ` (${errors} errors)` : ""));
+    console.log(`Vector Search: ${embedded} embedded, ${skipped} cached, ${errors} errors`);
     updateStatus("");
     if (view) {
       view.forceShowSimilar();
@@ -428,6 +480,10 @@ export default class VectorSearchPlugin extends Plugin {
 
   async loadSettings(): Promise<void> {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    // Migrate old "on-change" to "on-save"
+    if ((this.settings.indexMode as string) === "on-change") {
+      this.settings.indexMode = "on-save";
+    }
   }
 
   async saveSettings(): Promise<void> {

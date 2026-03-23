@@ -27,7 +27,7 @@ export interface VectorSearchSettings {
   excludeFolders: string;
   truncationLength: number;
   showScores: boolean;
-  indexMode: "on-change" | "interval" | "manual" | "readonly";
+  indexMode: "on-save" | "interval" | "manual" | "readonly";
   autoIndexInterval: number;
   includeFrontmatter: boolean;
   titleWeight: number;
@@ -48,7 +48,7 @@ export const DEFAULT_SETTINGS: VectorSearchSettings = {
   excludeFolders: "daily, scratch, templates",
   truncationLength: 2000,
   showScores: true,
-  indexMode: "on-change",
+  indexMode: "on-save",
   autoIndexInterval: 60,
   includeFrontmatter: true,
   titleWeight: 1,
@@ -86,16 +86,26 @@ export class VectorSearchSettingTab extends PluginSettingTab {
       .setName("Index")
       .setDesc(indexInfo);
 
+    const progressEl = containerEl.createDiv({ cls: "vector-search-progress" });
+
     if (!readonly) {
       indexSetting
         .addButton((btn) => {
           btn.setButtonText("Rebuild").onClick(async () => {
             btn.setDisabled(true);
             btn.setButtonText("Indexing...");
+            const start = Date.now();
+            this.plugin.onIndexProgress = (done, total) => {
+              progressEl.textContent = `Embedding ${done} / ${total} notes...`;
+              indexSetting.setDesc(`${done}/${total}`);
+            };
             await this.plugin.rebuildIndex();
+            this.plugin.onIndexProgress = null;
+            const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+            const notes = Object.keys(this.plugin.index?.notes || {}).length;
+            progressEl.textContent = `Done: ${notes} notes indexed in ${elapsed}s`;
             btn.setDisabled(false);
             btn.setButtonText("Rebuild");
-            this.display();
           });
         })
         .addButton((btn) => {
@@ -109,10 +119,10 @@ export class VectorSearchSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Indexing mode")
       .setDesc(
-        "On change: re-embeds after edits. Interval: periodic full re-index. Manual: rebuild button only. Read-only: iPad mode, search only.",
+        "On save: re-embeds when you navigate away from a modified note. Interval: periodic full re-index. Manual: rebuild button only. Read-only: iPad mode, search only.",
       )
       .addDropdown((drop) => {
-        drop.addOption("on-change", "On change (debounced)");
+        drop.addOption("on-save", "On save");
         drop.addOption("interval", "On interval (periodic)");
         drop.addOption("manual", "Manual only");
         drop.addOption("readonly", "Read-only (iPad mode)");
