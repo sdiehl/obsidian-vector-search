@@ -2,3 +2,6 @@ node_modules/
 main.js
 dist/
 *.js.map
+embeddings.json
+data.json
+bin/

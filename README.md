@@ -14,13 +14,13 @@ cd obsidian-vector-search
 npm install && npm run build   # or: yarn install && yarn build
 ```
 
-Symlink into your vault:
+Deploy to your vault:
 
 ```bash
-ln -s "$(pwd)" /path/to/vault/.obsidian/plugins/obsidian-vector-search
+OBSIDIAN_VAULT=/path/to/vault npm run deploy
 ```
 
-Enable "Vector Search" in Settings > Community Plugins. The plugin automatically builds the index on first launch and keeps it updated as you edit notes.
+Enable "Vector Search" in Settings > Community Plugins. The plugin automatically builds the index on first launch and keeps it updated as you edit notes. Re-run `npm run deploy` after pulling updates.
 
 ### iPad
 
