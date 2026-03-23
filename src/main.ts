@@ -253,12 +253,18 @@ export default class VectorSearchPlugin extends Plugin {
       return;
     }
     this.indexing = true;
+    const view = this.getView();
 
     const files = this.app.vault.getMarkdownFiles().filter(
       (f) => !this.isExcluded(f.path),
     );
     const total = files.length;
-    new Notice(`Vector Search: indexing ${total} notes...`);
+
+    const updateStatus = (msg: string) => {
+      if (view) view.setIndexingStatus(msg);
+    };
+
+    updateStatus(`Indexing 0/${total}...`);
 
     this.index = {
       model: this.settings.model,
@@ -280,10 +286,7 @@ export default class VectorSearchPlugin extends Plugin {
         const mtime = Math.floor(file.stat.mtime / 1000);
         this.index.notes[file.path] = { v: vec, title: prepared.title, mtime };
         count++;
-
-        if (count % 10 === 0) {
-          new Notice(`Vector Search: ${count}/${total} notes embedded...`, 2000);
-        }
+        updateStatus(`Indexing ${count}/${total}...`);
       } catch (e) {
         errors++;
         console.error(`Vector Search: failed to embed ${file.path}`, e);
@@ -292,12 +295,8 @@ export default class VectorSearchPlugin extends Plugin {
 
     await this.saveIndex();
     this.indexing = false;
-    new Notice(
-      `Vector Search: indexed ${count} notes` +
-        (errors > 0 ? ` (${errors} errors)` : ""),
-    );
-
-    const view = this.getView();
+    console.log(`Vector Search: indexed ${count} notes` + (errors > 0 ? ` (${errors} errors)` : ""));
+    updateStatus("");
     if (view) view.showSimilarToActive();
   }
 

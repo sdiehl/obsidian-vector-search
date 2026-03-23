@@ -71,8 +71,8 @@ export class VectorSearchView extends ItemView {
   showSimilarToActive(): void {
     if (this.mode === "search") return;
     const index = this.plugin.index;
-    if (!index) {
-      this.setStatus("No embeddings loaded. Run the indexer first.");
+    if (!index || Object.keys(index.notes).length === 0) {
+      this.setStatus("No embeddings loaded.");
       this.clearResults();
       return;
     }
@@ -88,6 +88,7 @@ export class VectorSearchView extends ItemView {
     if (!entry) {
       this.setStatus(`"${activeFile.basename}" is not indexed`);
       this.clearResults();
+      this.showRebuildButton();
       return;
     }
 
@@ -135,12 +136,32 @@ export class VectorSearchView extends ItemView {
     }
   }
 
+  setIndexingStatus(text: string): void {
+    this.setStatus(text);
+    if (text) {
+      this.clearResults();
+    }
+  }
+
   private setStatus(text: string): void {
     if (this.statusEl) this.statusEl.textContent = text;
   }
 
   private clearResults(): void {
     if (this.resultsContainer) this.resultsContainer.empty();
+  }
+
+  private showRebuildButton(): void {
+    if (!this.resultsContainer || this.plugin.settings.indexMode === "readonly") return;
+    const btn = this.resultsContainer.createEl("button", {
+      text: "Rebuild Index",
+      cls: "vector-search-rebuild-btn",
+    });
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      btn.textContent = "Indexing...";
+      await this.plugin.rebuildIndex();
+    });
   }
 
   private renderResults(results: SimilarNote[]): void {
