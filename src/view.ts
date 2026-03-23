@@ -91,7 +91,12 @@ export class VectorSearchView extends ItemView {
       return;
     }
 
-    const similar = findSimilar(entry.v, index, activeFile.path);
+    const similar = findSimilar(
+      entry.v,
+      index,
+      activeFile.path,
+      this.plugin.settings.maxResults,
+    ).filter((r) => r.score >= this.plugin.settings.minScore);
     this.setStatus(
       `Similar to "${activeFile.basename}" (${Object.keys(index.notes).length} notes indexed)`,
     );
@@ -119,8 +124,13 @@ export class VectorSearchView extends ItemView {
     this.clearResults();
 
     try {
-      const queryVec = await embedQuery(query);
-      const results = findSimilar(queryVec, index, undefined);
+      const queryVec = await embedQuery(query, this.plugin.settings.model);
+      const results = findSimilar(
+        queryVec,
+        index,
+        undefined,
+        this.plugin.settings.maxResults,
+      ).filter((r) => r.score >= this.plugin.settings.minScore);
       this.setStatus(`Results for "${query}"`);
       this.renderResults(results);
     } catch (e: any) {
@@ -153,10 +163,12 @@ export class VectorSearchView extends ItemView {
       if (folder) {
         meta.createSpan({ text: folder, cls: "vector-search-item-folder" });
       }
-      meta.createSpan({
-        text: `${(r.score * 100).toFixed(0)}%`,
-        cls: "vector-search-item-score",
-      });
+      if (this.plugin.settings.showScores) {
+        meta.createSpan({
+          text: `${(r.score * 100).toFixed(0)}%`,
+          cls: "vector-search-item-score",
+        });
+      }
 
       item.addEventListener("click", () => {
         const file = this.app.vault.getAbstractFileByPath(r.path);

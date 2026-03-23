@@ -6,7 +6,11 @@
   "scripts": {
     "build": "node esbuild.config.mjs",
     "dev": "node esbuild.config.mjs --watch",
-    "index": "node scripts/index.mjs"
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run lint",
+    "index": "node scripts/index.mjs",
+    "watch-vault": "node scripts/watch.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.4.0"
@@ -14,7 +18,9 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "esbuild": "^0.25.0",
+    "eslint": "^9.0.0",
     "obsidian": "latest",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "typescript-eslint": "^8.0.0"
   }
 }

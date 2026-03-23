@@ -16,10 +16,15 @@ jobs:
           node-version: "20"
           cache: "npm"
       - run: npm ci
-      - run: npx tsc --noEmit
-      - run: npm run build
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Build
+        run: npm run build
       - name: Verify artifacts
         run: |
           test -f main.js
           test -f manifest.json
           test -f styles.css
+          test -f LICENSE
