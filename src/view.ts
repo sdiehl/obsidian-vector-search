@@ -7,6 +7,7 @@ export const VIEW_TYPE = "vector-search-sidebar";
 
 export class VectorSearchView extends ItemView {
   plugin: VectorSearchPlugin;
+  navigation = false;
   private searchInput: HTMLInputElement | null = null;
   private resultsContainer: HTMLElement | null = null;
   private statusEl: HTMLElement | null = null;
@@ -61,6 +62,15 @@ export class VectorSearchView extends ItemView {
     // Results
     this.resultsContainer = container.createDiv({
       cls: "vector-search-results",
+    });
+
+    // Prevent the results area from stealing focus (avoids the
+    // "click once to focus sidebar, click again to navigate" issue).
+    // The search input remains focusable normally.
+    this.resultsContainer.addEventListener("mousedown", (e: MouseEvent) => {
+      if (!(e.target instanceof HTMLInputElement)) {
+        e.preventDefault();
+      }
     });
 
     this.showSimilarToActive();
@@ -188,10 +198,8 @@ export class VectorSearchView extends ItemView {
       const titleEl = body.createDiv({ cls: "vector-search-item-title" });
       titleEl.textContent = r.title || r.path;
 
-      const folder = r.path.split("/").slice(0, -1).join("/");
-      if (folder) {
-        body.createDiv({ text: folder, cls: "vector-search-item-folder" });
-      }
+      const folder = r.path.split("/").slice(0, -1).join("/") || "/";
+      body.createDiv({ text: folder, cls: "vector-search-item-folder" });
 
       if (this.plugin.settings.showScores) {
         item.createDiv({
@@ -200,9 +208,17 @@ export class VectorSearchView extends ItemView {
         });
       }
 
-      item.addEventListener("click", (e: MouseEvent) => {
+      item.addEventListener("auxclick", (e: MouseEvent) => {
+        // Middle click opens in new tab
+        if (e.button === 1) {
+          this.app.workspace.openLinkText(r.path, "", "tab");
+        }
+      });
+      item.addEventListener("pointerdown", (e: PointerEvent) => {
+        if (e.button !== 0) return;
+        // Navigate immediately on pointerdown, before Obsidian's leaf
+        // activation steals focus and swallows the click event.
         e.preventDefault();
-        e.stopPropagation();
         this.app.workspace.openLinkText(r.path, "", false);
       });
     }
