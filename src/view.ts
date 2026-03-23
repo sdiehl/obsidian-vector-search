@@ -68,6 +68,11 @@ export class VectorSearchView extends ItemView {
 
   async onClose(): Promise<void> {}
 
+  forceShowSimilar(): void {
+    this.mode = "similar";
+    this.showSimilarToActive();
+  }
+
   showSimilarToActive(): void {
     if (this.mode === "search") return;
     const index = this.plugin.index;
@@ -79,7 +84,7 @@ export class VectorSearchView extends ItemView {
 
     const activeFile = this.app.workspace.getActiveFile();
     if (!activeFile) {
-      this.setStatus("No active file");
+      this.setStatus("Open a note to see similar notes");
       this.clearResults();
       return;
     }
@@ -160,6 +165,7 @@ export class VectorSearchView extends ItemView {
     btn.addEventListener("click", async () => {
       btn.disabled = true;
       btn.textContent = "Indexing...";
+      this.mode = "similar";
       await this.plugin.rebuildIndex();
     });
   }

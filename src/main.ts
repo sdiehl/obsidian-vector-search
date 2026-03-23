@@ -103,6 +103,12 @@ export default class VectorSearchPlugin extends Plugin {
     ) {
       setTimeout(() => this.rebuildIndex(), 3000);
     }
+
+    // Refresh sidebar once layout is ready (active file may not be set during onOpen)
+    this.app.workspace.onLayoutReady(() => {
+      const view = this.getView();
+      if (view) view.showSimilarToActive();
+    });
   }
 
   async onunload(): Promise<void> {
@@ -297,7 +303,9 @@ export default class VectorSearchPlugin extends Plugin {
     this.indexing = false;
     console.log(`Vector Search: indexed ${count} notes` + (errors > 0 ? ` (${errors} errors)` : ""));
     updateStatus("");
-    if (view) view.showSimilarToActive();
+    if (view) {
+      view.forceShowSimilar();
+    }
   }
 
   async clearIndex(): Promise<void> {
