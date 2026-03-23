@@ -1,4 +1,4 @@
-import { Plugin, TFile, WorkspaceLeaf, debounce } from "obsidian";
+import { Notice, Plugin, TFile, WorkspaceLeaf, debounce } from "obsidian";
 import { VectorSearchView, VIEW_TYPE } from "./view";
 import type { EmbeddingsIndex } from "./vectors";
 import { resetEmbedder, embedQuery } from "./embedder";
@@ -13,8 +13,10 @@ const EMBEDDINGS_FILE = "embeddings.json";
 export default class VectorSearchPlugin extends Plugin {
   index: EmbeddingsIndex | null = null;
   settings: VectorSearchSettings = DEFAULT_SETTINGS;
+  indexing = false;
   private pendingFiles: Set<string> = new Set();
   private flushPending: () => void;
+  private intervalTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(app: any, manifest: any) {
     super(app, manifest);
@@ -42,15 +44,9 @@ export default class VectorSearchPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: "reindex",
-      name: "Reload embeddings index",
-      callback: () => this.loadIndex(),
-    });
-
-    this.addCommand({
-      id: "reindex-all",
-      name: "Re-embed all notes now",
-      callback: () => this.reindexAll(),
+      id: "rebuild-index",
+      name: "Rebuild entire index",
+      callback: () => this.rebuildIndex(),
     });
 
     // Update sidebar when active file changes
@@ -61,18 +57,18 @@ export default class VectorSearchPlugin extends Plugin {
       }),
     );
 
-    // Auto-index on file changes
+    // File change listeners (gated by indexMode in the handler)
     this.registerEvent(
       this.app.vault.on("modify", (file) => {
-        if (this.settings.autoIndex && file instanceof TFile && file.extension === "md") {
-          this.queueReindex(file.path);
+        if (file instanceof TFile && file.extension === "md") {
+          this.onFileChanged(file.path);
         }
       }),
     );
     this.registerEvent(
       this.app.vault.on("create", (file) => {
-        if (this.settings.autoIndex && file instanceof TFile && file.extension === "md") {
-          this.queueReindex(file.path);
+        if (file instanceof TFile && file.extension === "md") {
+          this.onFileChanged(file.path);
         }
       }),
     );
@@ -82,15 +78,13 @@ export default class VectorSearchPlugin extends Plugin {
           if (this.index?.notes[oldPath]) {
             delete this.index.notes[oldPath];
           }
-          if (this.settings.autoIndex) {
-            this.queueReindex(file.path);
-          }
+          this.onFileChanged(file.path);
         }
       }),
     );
     this.registerEvent(
       this.app.vault.on("delete", (file) => {
-        if (file instanceof TFile && file.extension === "md") {
+        if (file instanceof TFile && file.extension === "md" && this.settings.indexMode !== "readonly") {
           if (this.index?.notes[file.path]) {
             delete this.index.notes[file.path];
             this.saveIndex();
@@ -98,9 +92,46 @@ export default class VectorSearchPlugin extends Plugin {
         }
       }),
     );
+
+    this.setupIndexing();
+
+    // Auto-build on first load if empty and not readonly
+    if (
+      this.index &&
+      Object.keys(this.index.notes).length === 0 &&
+      this.settings.indexMode !== "readonly"
+    ) {
+      setTimeout(() => this.rebuildIndex(), 3000);
+    }
   }
 
-  async onunload(): Promise<void> {}
+  async onunload(): Promise<void> {
+    this.clearInterval();
+  }
+
+  setupIndexing(): void {
+    this.clearInterval();
+    const ms = this.settings.autoIndexInterval * 1000;
+    this.flushPending = debounce(() => this.reindexPending(), ms, true);
+
+    if (this.settings.indexMode === "interval") {
+      this.intervalTimer = setInterval(() => this.rebuildIndex(), ms);
+    }
+  }
+
+  private clearInterval(): void {
+    if (this.intervalTimer !== null) {
+      clearInterval(this.intervalTimer);
+      this.intervalTimer = null;
+    }
+  }
+
+  private onFileChanged(path: string): void {
+    if (this.settings.indexMode !== "on-change") return;
+    if (this.isExcluded(path)) return;
+    this.pendingFiles.add(path);
+    this.flushPending();
+  }
 
   getIndexPath(): string {
     if (this.settings.indexPath) {
@@ -120,7 +151,6 @@ export default class VectorSearchPlugin extends Plugin {
           `Vector Search: loaded ${Object.keys(this.index.notes).length} note embeddings`,
         );
       } else {
-        console.log("Vector Search: no embeddings.json found");
         this.index = {
           model: this.settings.model,
           dimension: 384,
@@ -134,7 +164,7 @@ export default class VectorSearchPlugin extends Plugin {
   }
 
   async saveIndex(): Promise<void> {
-    if (!this.index) return;
+    if (!this.index || this.settings.indexMode === "readonly") return;
     try {
       const path = this.getIndexPath();
       this.index.indexed_at = new Date().toISOString();
@@ -155,14 +185,9 @@ export default class VectorSearchPlugin extends Plugin {
     return false;
   }
 
-  private queueReindex(path: string): void {
-    if (this.isExcluded(path)) return;
-    this.pendingFiles.add(path);
-    this.flushPending();
-  }
-
   private async reindexPending(): Promise<void> {
-    if (this.pendingFiles.size === 0) return;
+    if (this.pendingFiles.size === 0 || this.indexing) return;
+    if (this.settings.indexMode === "readonly") return;
     const paths = [...this.pendingFiles];
     this.pendingFiles.clear();
 
@@ -180,15 +205,14 @@ export default class VectorSearchPlugin extends Plugin {
       try {
         const file = this.app.vault.getAbstractFileByPath(path);
         if (!(file instanceof TFile)) continue;
-        const content = await this.app.vault.cachedRead(file);
-        const stripped = this.stripFrontmatter(content);
-        if (stripped.length < 20) continue;
+        const raw = await this.app.vault.cachedRead(file);
+        const prepared = this.prepareContent(raw, path, file.basename);
+        if (prepared.text.length < this.settings.minContentLength) continue;
 
-        const truncated = stripped.slice(0, this.settings.truncationLength);
+        const truncated = prepared.text.slice(0, this.settings.truncationLength);
         const vec = await embedQuery(truncated, this.settings.model);
-        const title = this.extractTitle(stripped, file.basename);
         const mtime = Math.floor(file.stat.mtime / 1000);
-        this.index.notes[path] = { v: vec, title, mtime };
+        this.index.notes[path] = { v: vec, title: prepared.title, mtime };
         count++;
       } catch (e) {
         console.error(`Vector Search: failed to embed ${path}`, e);
@@ -203,27 +227,130 @@ export default class VectorSearchPlugin extends Plugin {
     }
   }
 
-  private async reindexAll(): Promise<void> {
-    const files = this.app.vault.getMarkdownFiles();
+  async rebuildIndex(): Promise<void> {
+    if (this.indexing || this.settings.indexMode === "readonly") {
+      if (this.settings.indexMode === "readonly") {
+        new Notice("Vector Search: read-only mode, indexing disabled");
+      } else {
+        new Notice("Vector Search: indexing already in progress");
+      }
+      return;
+    }
+    this.indexing = true;
+
+    const files = this.app.vault.getMarkdownFiles().filter(
+      (f) => !this.isExcluded(f.path),
+    );
+    const total = files.length;
+    new Notice(`Vector Search: indexing ${total} notes...`);
+
+    this.index = {
+      model: this.settings.model,
+      dimension: 384,
+      indexed_at: new Date().toISOString(),
+      notes: {},
+    };
+
+    let count = 0;
+    let errors = 0;
     for (const file of files) {
-      if (!this.isExcluded(file.path)) {
-        this.pendingFiles.add(file.path);
+      try {
+        const raw = await this.app.vault.cachedRead(file);
+        const prepared = this.prepareContent(raw, file.path, file.basename);
+        if (prepared.text.length < this.settings.minContentLength) continue;
+
+        const truncated = prepared.text.slice(0, this.settings.truncationLength);
+        const vec = await embedQuery(truncated, this.settings.model);
+        const mtime = Math.floor(file.stat.mtime / 1000);
+        this.index.notes[file.path] = { v: vec, title: prepared.title, mtime };
+        count++;
+
+        if (count % 10 === 0) {
+          new Notice(`Vector Search: ${count}/${total} notes embedded...`, 2000);
+        }
+      } catch (e) {
+        errors++;
+        console.error(`Vector Search: failed to embed ${file.path}`, e);
       }
     }
-    await this.reindexPending();
+
+    await this.saveIndex();
+    this.indexing = false;
+    new Notice(
+      `Vector Search: indexed ${count} notes` +
+        (errors > 0 ? ` (${errors} errors)` : ""),
+    );
+
+    const view = this.getView();
+    if (view) view.showSimilarToActive();
   }
 
-  private stripFrontmatter(content: string): string {
-    if (!content.startsWith("---")) return content;
-    const end = content.indexOf("---", 3);
-    if (end === -1) return content;
-    return content.slice(end + 3).trim();
+  async clearIndex(): Promise<void> {
+    if (this.settings.indexMode === "readonly") {
+      new Notice("Vector Search: read-only mode, cannot clear index");
+      return;
+    }
+    this.index = {
+      model: this.settings.model,
+      dimension: 384,
+      indexed_at: new Date().toISOString(),
+      notes: {},
+    };
+    await this.saveIndex();
+    new Notice("Vector Search: index cleared");
+    const view = this.getView();
+    if (view) view.showSimilarToActive();
   }
 
-  private extractTitle(content: string, fallback: string): string {
-    const match = content.match(/^#\s+(.+)$/m);
-    if (match) return match[1].trim();
-    return fallback.replace(/-/g, " ");
+  prepareContent(
+    raw: string,
+    filePath: string,
+    fallbackTitle: string,
+  ): { text: string; title: string } {
+    let body = raw;
+    let tags: string[] = [];
+
+    if (raw.startsWith("---")) {
+      const end = raw.indexOf("---", 3);
+      if (end !== -1) {
+        const fm = raw.slice(3, end);
+        body = raw.slice(end + 3).trim();
+        const tagMatch = fm.match(/^tags:\s*\[([^\]]*)\]/m);
+        if (tagMatch) {
+          tags = tagMatch[1].split(",").map((t) => t.trim()).filter(Boolean);
+        } else {
+          const lines = fm.split("\n");
+          let inTags = false;
+          for (const line of lines) {
+            if (/^tags:\s*$/.test(line)) {
+              inTags = true;
+            } else if (inTags && /^\s+-\s+(.+)/.test(line)) {
+              const m = line.match(/^\s+-\s+(.+)/);
+              if (m) tags.push(m[1].trim());
+            } else if (inTags && !/^\s*$/.test(line)) {
+              inTags = false;
+            }
+          }
+        }
+      }
+    }
+
+    const titleMatch = body.match(/^#\s+(.+)$/m);
+    const title = titleMatch ? titleMatch[1].trim() : fallbackTitle.replace(/-/g, " ");
+
+    let prefix = "";
+    if (this.settings.includePath) {
+      const pathWithoutExt = filePath.replace(/\.md$/, "");
+      prefix += `path: ${pathWithoutExt}\n`;
+    }
+    for (let i = 0; i < this.settings.titleWeight; i++) {
+      prefix += title + "\n";
+    }
+    if (this.settings.includeFrontmatter && tags.length > 0) {
+      prefix += "tags: " + tags.join(", ") + "\n";
+    }
+
+    return { text: prefix + body, title };
   }
 
   async loadSettings(): Promise<void> {

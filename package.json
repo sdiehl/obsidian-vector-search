@@ -9,8 +9,7 @@
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm run lint",
-    "index": "node scripts/index.mjs",
-    "watch-vault": "node scripts/watch.mjs"
+    "index": "node scripts/index.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.4.0"
