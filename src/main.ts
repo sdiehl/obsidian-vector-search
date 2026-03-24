@@ -55,7 +55,7 @@ export default class VectorSearchPlugin extends Plugin {
     });
 
     this.addRibbonIcon("search", "Vector Search", () => {
-      this.activateView();
+      void this.activateView();
     });
 
     this.addCommand({
@@ -129,7 +129,7 @@ export default class VectorSearchPlugin extends Plugin {
           file.extension === "md" &&
           this.settings.indexMode !== "readonly"
         ) {
-          removeNote(oldPath);
+          void removeNote(oldPath);
           // Always reindex on rename (path changed, title may have changed)
           this.queueReindex(file.path);
         }
@@ -142,8 +142,8 @@ export default class VectorSearchPlugin extends Plugin {
           file.extension === "md" &&
           this.settings.indexMode !== "readonly"
         ) {
-          removeNote(file.path);
-          this.saveIndex();
+          void removeNote(file.path);
+          void this.saveIndex();
         }
       }),
     );
@@ -153,16 +153,21 @@ export default class VectorSearchPlugin extends Plugin {
       const view = this.getView();
       if (view) view.showSimilarToActive();
 
-      noteCount().then((n) => {
-        if (n === 0 && this.settings.indexMode !== "readonly") {
-          setTimeout(() => this.rebuildIndex(), 5000);
-        }
-      });
+      if (noteCount() === 0 && this.settings.indexMode !== "readonly") {
+        setTimeout(
+          () =>
+            void this.rebuildIndex().catch((e) =>
+              console.error("Vector Search: auto-rebuild failed", e),
+            ),
+          5000,
+        );
+      }
     });
   }
 
-  async onunload(): Promise<void> {
+  onunload(): void {
     this.clearInterval();
+    resetEmbedder();
   }
 
   setupIndexing(): void {
@@ -214,15 +219,15 @@ export default class VectorSearchPlugin extends Plugin {
       if (await adapter.exists(path)) {
         const raw = await adapter.read(path);
         const data = JSON.parse(raw);
-        await loadDb(data);
-        const n = await noteCount();
+        loadDb(data);
+        const n = noteCount();
         console.log(`Vector Search: loaded ${n} note embeddings`);
       } else {
-        await createDb();
+        createDb();
       }
     } catch (e) {
       console.error("Vector Search: failed to load index", e);
-      await createDb();
+      createDb();
     }
   }
 
@@ -230,7 +235,7 @@ export default class VectorSearchPlugin extends Plugin {
     if (this.settings.indexMode === "readonly") return;
     try {
       const path = this.getIndexPath();
-      const data = await saveDb();
+      const data = saveDb();
       if (data) {
         await this.app.vault.adapter.write(path, JSON.stringify(data));
       }
@@ -239,7 +244,7 @@ export default class VectorSearchPlugin extends Plugin {
     }
   }
 
-  async getNoteCount(): Promise<number> {
+  getNoteCount(): number {
     return noteCount();
   }
 
@@ -247,10 +252,10 @@ export default class VectorSearchPlugin extends Plugin {
     return getNoteVec(path);
   }
 
-  async findSimilarNotes(
+  findSimilarNotes(
     vec: number[],
     excludePath?: string,
-  ): Promise<{ path: string; title: string; score: number }[]> {
+  ): { path: string; title: string; score: number }[] {
     return findSimilar(vec, excludePath, this.settings.maxResults, this.settings.minScore);
   }
 
@@ -306,7 +311,7 @@ export default class VectorSearchPlugin extends Plugin {
 
         const truncated = prepared.text.slice(0, this.settings.truncationLength);
         const vec = await embedQuery(truncated, this.settings.model);
-        await upsertNote(path, prepared.title, truncated, mtime, vec);
+        upsertNote(path, prepared.title, truncated, mtime, vec);
         count++;
       } catch (e) {
         console.error(`Vector Search: failed to embed ${path}`, e);
@@ -332,7 +337,7 @@ export default class VectorSearchPlugin extends Plugin {
     if (prepared.text.length < this.settings.minContentLength) return false;
     const truncated = prepared.text.slice(0, this.settings.truncationLength);
     const vec = await embedQuery(truncated, this.settings.model);
-    await upsertNote(path, prepared.title, truncated, mtime, vec);
+    upsertNote(path, prepared.title, truncated, mtime, vec);
     await this.saveIndex();
     return true;
   }
@@ -356,10 +361,10 @@ export default class VectorSearchPlugin extends Plugin {
 
     // Remove notes that no longer exist
     const validPaths = new Set(files.map((f) => f.path));
-    const indexedPaths = await getAllPaths();
+    const indexedPaths = getAllPaths();
     for (const p of indexedPaths) {
       if (!validPaths.has(p)) {
-        await removeNote(p);
+        removeNote(p);
       }
     }
 
@@ -382,7 +387,7 @@ export default class VectorSearchPlugin extends Plugin {
 
         const truncated = prepared.text.slice(0, this.settings.truncationLength);
         const vec = await embedQuery(truncated, this.settings.model);
-        await upsertNote(file.path, prepared.title, truncated, mtime, vec);
+        upsertNote(file.path, prepared.title, truncated, mtime, vec);
         embedded++;
         updateStatus(`Indexing ${embedded + skipped}/${total} (${skipped} cached)...`);
         if (this.onIndexProgress) this.onIndexProgress(embedded + skipped, total);
@@ -406,7 +411,7 @@ export default class VectorSearchPlugin extends Plugin {
       new Notice("Vector Search: read-only mode, cannot clear index");
       return;
     }
-    await clearDb();
+    clearDb();
     await this.saveIndex();
     new Notice("Vector Search: index cleared");
     const view = this.getView();
@@ -525,7 +530,7 @@ export default class VectorSearchPlugin extends Plugin {
   getView(): VectorSearchView | null {
     const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE);
     if (leaves.length > 0) {
-      return leaves[0].view as VectorSearchView;
+      return leaves[0].view as unknown as VectorSearchView;
     }
     return null;
   }
@@ -533,13 +538,13 @@ export default class VectorSearchPlugin extends Plugin {
   async activateView(): Promise<void> {
     const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE);
     if (existing.length > 0) {
-      this.app.workspace.revealLeaf(existing[0]);
+      void this.app.workspace.revealLeaf(existing[0]);
       return;
     }
     const leaf = this.app.workspace.getRightLeaf(false);
     if (leaf) {
       await leaf.setViewState({ type: VIEW_TYPE, active: true });
-      this.app.workspace.revealLeaf(leaf);
+      void this.app.workspace.revealLeaf(leaf);
     }
   }
 }

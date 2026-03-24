@@ -16,60 +16,57 @@ export interface SimilarNote {
 
 let db: AnyOrama | null = null;
 
-// Orama doesn't return vector values in results, so we keep a parallel
-// map for the "similar to current note" lookup.
 const vecMap = new Map<string, number[]>();
 const mtimeMap = new Map<string, number>();
 
-export async function createDb(): Promise<void> {
-  db = await create({ schema: SCHEMA });
+export function createDb(): void {
+  db = create({ schema: SCHEMA }) as AnyOrama;
   vecMap.clear();
   mtimeMap.clear();
 }
 
-export async function noteCount(): Promise<number> {
+export function noteCount(): number {
   if (!db) return 0;
   return count(db);
 }
 
-export async function upsertNote(
+export function upsertNote(
   path: string,
   title: string,
   content: string,
   mtime: number,
   embedding: number[],
-): Promise<void> {
-  if (!db) await createDb();
-  // Remove existing entry
+): void {
+  if (!db) createDb();
   try {
-    const existing = await search(db!, {
+    const existing = search(db!, {
       term: path,
       properties: ["path"],
       exact: true,
       limit: 1,
-    });
+    }) as { hits: { id: string }[] };
     for (const hit of existing.hits) {
-      await remove(db!, hit.id);
+      void remove(db!, hit.id);
     }
   } catch {
     // not found
   }
-  await insert(db!, { path, title, content, mtime, embedding });
+  void insert(db!, { path, title, content, mtime, embedding });
   vecMap.set(path, embedding);
   mtimeMap.set(path, mtime);
 }
 
-export async function removeNote(path: string): Promise<void> {
+export function removeNote(path: string): void {
   if (!db) return;
   try {
-    const existing = await search(db, {
+    const existing = search(db, {
       term: path,
       properties: ["path"],
       exact: true,
       limit: 1,
-    });
+    }) as { hits: { id: string }[] };
     for (const hit of existing.hits) {
-      await remove(db, hit.id);
+      void remove(db, hit.id);
     }
   } catch {
     // not found
@@ -78,19 +75,19 @@ export async function removeNote(path: string): Promise<void> {
   mtimeMap.delete(path);
 }
 
-export async function findSimilar(
+export function findSimilar(
   queryVec: number[],
   excludePath: string | undefined,
   limit: number,
   minScore: number,
-): Promise<SimilarNote[]> {
+): SimilarNote[] {
   if (!db) return [];
-  const results = await search(db, {
+  const results = search(db, {
     mode: "vector",
     vector: { value: queryVec, property: "embedding" },
     similarity: minScore,
     limit: limit + 1,
-  });
+  }) as { hits: { document: Record<string, unknown>; score: number }[] };
   return results.hits
     .filter((h) => h.document.path !== excludePath)
     .slice(0, limit)
@@ -109,12 +106,12 @@ export function getNoteVec(path: string): number[] | null {
   return vecMap.get(path) ?? null;
 }
 
-export async function saveDb(): Promise<{
-  orama: any;
+export function saveDb(): {
+  orama: unknown;
   vecs: [string, number[]][];
   mtimes: [string, number][];
-}> {
-  const orama = db ? await save(db) : null;
+} {
+  const orama = db ? save(db) : null;
   return {
     orama,
     vecs: [...vecMap.entries()],
@@ -122,13 +119,17 @@ export async function saveDb(): Promise<{
   };
 }
 
-export async function loadDb(data: any): Promise<void> {
-  db = await create({ schema: SCHEMA });
+export function loadDb(data: {
+  orama?: unknown;
+  vecs?: [string, number[]][];
+  mtimes?: [string, number][];
+}): void {
+  db = create({ schema: SCHEMA }) as AnyOrama;
   vecMap.clear();
   mtimeMap.clear();
 
   if (data.orama) {
-    await load(db, data.orama);
+    load(db, data.orama as Parameters<typeof load>[1]);
   }
   if (data.vecs) {
     for (const [path, vec] of data.vecs) {
@@ -142,10 +143,10 @@ export async function loadDb(data: any): Promise<void> {
   }
 }
 
-export async function clearDb(): Promise<void> {
-  await createDb();
+export function clearDb(): void {
+  createDb();
 }
 
-export async function getAllPaths(): Promise<Set<string>> {
+export function getAllPaths(): Set<string> {
   return new Set(vecMap.keys());
 }

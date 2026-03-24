@@ -48,7 +48,7 @@ export class VectorSearchView extends ItemView {
     });
     this.searchInput.addEventListener("keydown", (e: KeyboardEvent) => {
       if (e.key === "Enter") {
-        this.onSearch(this.searchInput!.value);
+        void this.onSearch(this.searchInput!.value);
       }
     });
 
@@ -101,7 +101,7 @@ export class VectorSearchView extends ItemView {
   }
 
   private async doShowSimilar(path: string, basename: string): Promise<void> {
-    const n = await this.plugin.getNoteCount();
+    const n = this.plugin.getNoteCount();
     if (n === 0) {
       this.setStatus("No embeddings loaded.");
       this.clearResults();
@@ -140,7 +140,7 @@ export class VectorSearchView extends ItemView {
       }
     }
 
-    const similar = await this.plugin.findSimilarNotes(vec, path);
+    const similar = this.plugin.findSimilarNotes(vec, path);
     this.setStatus(`Similar to "${basename}" (${n} notes indexed)`);
     this.renderResults(similar);
   }
@@ -153,7 +153,7 @@ export class VectorSearchView extends ItemView {
     }
     this.mode = "search";
 
-    const n = await this.plugin.getNoteCount();
+    const n = this.plugin.getNoteCount();
     if (n === 0) {
       this.setStatus("No embeddings loaded");
       return;
@@ -165,7 +165,7 @@ export class VectorSearchView extends ItemView {
 
     try {
       const queryVec = await embedQuery(query, this.plugin.settings.model);
-      const results = await this.plugin.findSimilarNotes(queryVec);
+      const results = this.plugin.findSimilarNotes(queryVec);
       this.setStatus(`Results for "${query}"`);
       this.renderResults(results);
     } catch (e: any) {
@@ -194,11 +194,11 @@ export class VectorSearchView extends ItemView {
       text: "Rebuild Index",
       cls: "vector-search-rebuild-btn",
     });
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", () => {
       btn.disabled = true;
       btn.textContent = "Indexing...";
       this.mode = "similar";
-      await this.plugin.rebuildIndex();
+      void this.plugin.rebuildIndex();
     });
   }
 
@@ -227,13 +227,13 @@ export class VectorSearchView extends ItemView {
 
       item.addEventListener("auxclick", (e: MouseEvent) => {
         if (e.button === 1) {
-          this.app.workspace.openLinkText(r.path, "", "tab");
+          void this.app.workspace.openLinkText(r.path, "", "tab");
         }
       });
       item.addEventListener("pointerdown", (e: PointerEvent) => {
         if (e.button !== 0) return;
         e.preventDefault();
-        this.app.workspace.openLinkText(r.path, "", false);
+        void this.app.workspace.openLinkText(r.path, "", false);
       });
     }
   }
