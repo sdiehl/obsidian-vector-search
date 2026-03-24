@@ -1,13 +1,4 @@
-import {
-  create,
-  insert,
-  remove,
-  search,
-  save,
-  load,
-  count,
-  type AnyOrama,
-} from "@orama/orama";
+import { create, insert, remove, search, save, load, count, type AnyOrama } from "@orama/orama";
 
 const SCHEMA = {
   path: "string" as const,
@@ -118,7 +109,11 @@ export function getNoteVec(path: string): number[] | null {
   return vecMap.get(path) ?? null;
 }
 
-export async function saveDb(): Promise<{ orama: any; vecs: [string, number[]][]; mtimes: [string, number][] }> {
+export async function saveDb(): Promise<{
+  orama: any;
+  vecs: [string, number[]][];
+  mtimes: [string, number][];
+}> {
   const orama = db ? await save(db) : null;
   return {
     orama,

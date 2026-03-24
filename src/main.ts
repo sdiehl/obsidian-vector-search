@@ -14,11 +14,7 @@ import {
   getAllPaths,
 } from "./vectors";
 import { resetEmbedder, embedQuery } from "./embedder";
-import {
-  VectorSearchSettingTab,
-  DEFAULT_SETTINGS,
-  type VectorSearchSettings,
-} from "./settings";
+import { VectorSearchSettingTab, DEFAULT_SETTINGS, type VectorSearchSettings } from "./settings";
 
 const INDEX_FILE = "orama-index.json";
 
@@ -97,7 +93,11 @@ export default class VectorSearchPlugin extends Plugin {
     // ensures we only re-embed when content actually changed.
     this.registerEvent(
       this.app.vault.on("modify", (file) => {
-        if (file instanceof TFile && file.extension === "md" && this.settings.indexMode === "on-save") {
+        if (
+          file instanceof TFile &&
+          file.extension === "md" &&
+          this.settings.indexMode === "on-save"
+        ) {
           if (!this.isExcluded(file.path)) {
             this.indexSingleNote(file.path)
               .then((changed) => {
@@ -113,14 +113,22 @@ export default class VectorSearchPlugin extends Plugin {
     );
     this.registerEvent(
       this.app.vault.on("create", (file) => {
-        if (file instanceof TFile && file.extension === "md" && this.settings.indexMode !== "readonly") {
+        if (
+          file instanceof TFile &&
+          file.extension === "md" &&
+          this.settings.indexMode !== "readonly"
+        ) {
           this.queueReindex(file.path);
         }
       }),
     );
     this.registerEvent(
       this.app.vault.on("rename", (file, oldPath) => {
-        if (file instanceof TFile && file.extension === "md" && this.settings.indexMode !== "readonly") {
+        if (
+          file instanceof TFile &&
+          file.extension === "md" &&
+          this.settings.indexMode !== "readonly"
+        ) {
           removeNote(oldPath);
           // Always reindex on rename (path changed, title may have changed)
           this.queueReindex(file.path);
@@ -129,7 +137,11 @@ export default class VectorSearchPlugin extends Plugin {
     );
     this.registerEvent(
       this.app.vault.on("delete", (file) => {
-        if (file instanceof TFile && file.extension === "md" && this.settings.indexMode !== "readonly") {
+        if (
+          file instanceof TFile &&
+          file.extension === "md" &&
+          this.settings.indexMode !== "readonly"
+        ) {
           removeNote(file.path);
           this.saveIndex();
         }
@@ -239,12 +251,7 @@ export default class VectorSearchPlugin extends Plugin {
     vec: number[],
     excludePath?: string,
   ): Promise<{ path: string; title: string; score: number }[]> {
-    return findSimilar(
-      vec,
-      excludePath,
-      this.settings.maxResults,
-      this.settings.minScore,
-    );
+    return findSimilar(vec, excludePath, this.settings.maxResults, this.settings.minScore);
   }
 
   isFileExcluded(path: string): string | null {
@@ -340,9 +347,7 @@ export default class VectorSearchPlugin extends Plugin {
     this.indexing = true;
     const view = this.getView();
 
-    const files = this.app.vault.getMarkdownFiles().filter(
-      (f) => !this.isExcluded(f.path),
-    );
+    const files = this.app.vault.getMarkdownFiles().filter((f) => !this.isExcluded(f.path));
     const total = files.length;
 
     const updateStatus = (msg: string) => {
@@ -423,7 +428,10 @@ export default class VectorSearchPlugin extends Plugin {
         body = raw.slice(end + 3).trim();
         const tagMatch = fm.match(/^tags:\s*\[([^\]]*)\]/m);
         if (tagMatch) {
-          tags = tagMatch[1].split(",").map((t) => t.trim()).filter(Boolean);
+          tags = tagMatch[1]
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean);
         } else {
           const lines = fm.split("\n");
           let inTags = false;

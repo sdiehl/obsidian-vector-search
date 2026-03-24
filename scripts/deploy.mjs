@@ -7,8 +7,8 @@ const vault = process.argv[2] || process.env.OBSIDIAN_VAULT;
 if (!vault) {
   console.error(
     "Usage: node scripts/deploy.mjs <vault-path>\n" +
-    "   or: OBSIDIAN_VAULT=<path> npm run deploy\n\n" +
-    "Copies built plugin files into the vault's plugin directory.",
+      "   or: OBSIDIAN_VAULT=<path> npm run deploy\n\n" +
+      "Copies built plugin files into the vault's plugin directory.",
   );
   process.exit(1);
 }

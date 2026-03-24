@@ -30,6 +30,18 @@ Open the sidebar via the ribbon icon or `Cmd+P` > "Open vector search sidebar".
 - **Auto-indexing**: Notes are re-indexed on save. New and renamed notes are indexed automatically.
 - **Rebuild**: Use Settings > Vector Search > Rebuild to re-index the entire vault.
 
+## Embeddings
+
+Embeddings are computed via [Transformers.js](https://github.com/huggingface/transformers.js) running ONNX models in a sandboxed iframe using the WebAssembly backend (no native dependencies, works on desktop and iPad).
+
+| Model                        | Dimensions | Quantization | Download | RAM   |
+| ---------------------------- | ---------- | ------------ | -------- | ----- |
+| `all-MiniLM-L6-v2` (default) | 384        | INT8         | ~23MB    | ~50MB |
+| `all-MiniLM-L12-v2`          | 384        | INT8         | ~33MB    | ~70MB |
+| `bge-small-en-v1.5`          | 384        | INT8         | ~33MB    | ~70MB |
+
+WebGPU acceleration is used when available (Chrome/Edge on supported hardware). Falls back to WASM single-threaded on iPad and environments without SharedArrayBuffer. Model files are downloaded from HuggingFace on first use and cached in IndexedDB.
+
 ## License
 
 MIT

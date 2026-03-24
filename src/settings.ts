@@ -84,9 +84,7 @@ export class VectorSearchSettingTab extends PluginSettingTab {
       indexSetting.setDesc(indexInfo);
     });
 
-    const indexSetting = new Setting(containerEl)
-      .setName("Index")
-      .setDesc(indexInfo);
+    const indexSetting = new Setting(containerEl).setName("Index").setDesc(indexInfo);
 
     const progressEl = containerEl.createDiv({ cls: "vector-search-progress" });
 
@@ -111,10 +109,13 @@ export class VectorSearchSettingTab extends PluginSettingTab {
           });
         })
         .addButton((btn) => {
-          btn.setButtonText("Clear").setWarning().onClick(async () => {
-            await this.plugin.clearIndex();
-            this.display();
-          });
+          btn
+            .setButtonText("Clear")
+            .setWarning()
+            .onClick(async () => {
+              await this.plugin.clearIndex();
+              this.display();
+            });
         });
     }
 
@@ -161,9 +162,7 @@ export class VectorSearchSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Embedding model")
-      .setDesc(
-        "Model for ad-hoc search queries. Changing this requires a rebuild.",
-      )
+      .setDesc("Model for ad-hoc search queries. Changing this requires a rebuild.")
       .addDropdown((drop) => {
         for (const [id, info] of Object.entries(MODELS)) {
           drop.addOption(id, info.name);
@@ -220,9 +219,7 @@ export class VectorSearchSettingTab extends PluginSettingTab {
 
       new Setting(containerEl)
         .setName("Include frontmatter tags")
-        .setDesc(
-          "Embed YAML tags alongside content. Improves topic matching.",
-        )
+        .setDesc("Embed YAML tags alongside content. Improves topic matching.")
         .addToggle((toggle) => {
           toggle.setValue(this.plugin.settings.includeFrontmatter);
           toggle.onChange(async (value) => {
@@ -249,9 +246,7 @@ export class VectorSearchSettingTab extends PluginSettingTab {
 
       new Setting(containerEl)
         .setName("Include file path")
-        .setDesc(
-          "Prepend file path (e.g. 'formal-methods/cedar') for folder-based topic signal.",
-        )
+        .setDesc("Prepend file path (e.g. 'formal-methods/cedar') for folder-based topic signal.")
         .addToggle((toggle) => {
           toggle.setValue(this.plugin.settings.includePath);
           toggle.onChange(async (value) => {

@@ -85,13 +85,16 @@ export class VectorSearchView extends ItemView {
   showSimilarToActive(): void {
     if (this.mode === "search") return;
 
+    // Clear stale results immediately so the old highlight doesn't linger
+    this.clearResults();
+
     const activeFile = this.app.workspace.getActiveFile();
     if (!activeFile) {
       this.setStatus("Open a note to see similar notes");
-      this.clearResults();
       return;
     }
 
+    this.setStatus("Loading...");
     this.doShowSimilar(activeFile.path, activeFile.basename).catch((e) =>
       console.error("Vector Search: sidebar error", e),
     );
@@ -114,7 +117,10 @@ export class VectorSearchView extends ItemView {
         return;
       }
       // Auto-index this note immediately instead of showing "not indexed"
-      if (this.plugin.settings.indexMode !== "readonly" && this.plugin.settings.indexMode !== "manual") {
+      if (
+        this.plugin.settings.indexMode !== "readonly" &&
+        this.plugin.settings.indexMode !== "manual"
+      ) {
         this.setStatus(`Indexing "${basename}"...`);
         this.clearResults();
         try {
@@ -125,7 +131,9 @@ export class VectorSearchView extends ItemView {
         }
       }
       if (!vec) {
-        this.setStatus(`"${basename}" is not indexed (content may be too short, min ${this.plugin.settings.minContentLength} chars)`);
+        this.setStatus(
+          `"${basename}" is not indexed (content may be too short, min ${this.plugin.settings.minContentLength} chars)`,
+        );
         this.clearResults();
         this.showRebuildButton();
         return;

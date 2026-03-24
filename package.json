@@ -7,8 +7,10 @@
     "build": "node esbuild.config.mjs",
     "dev": "node esbuild.config.mjs --watch",
     "lint": "eslint src/",
+    "fmt": "prettier --write 'src/**/*.ts' 'scripts/**/*.mjs' '*.md' '*.json' '*.mjs'",
+    "fmt:check": "prettier --check 'src/**/*.ts' 'scripts/**/*.mjs' '*.md' '*.json' '*.mjs'",
     "typecheck": "tsc --noEmit",
-    "check": "npm run typecheck && npm run lint",
+    "check": "npm run typecheck && npm run lint && npm run fmt:check",
     "index": "node scripts/index.mjs",
     "deploy": "npm run build && node scripts/deploy.mjs"
   },
@@ -21,6 +23,7 @@
     "esbuild": "^0.25.0",
     "eslint": "^9.0.0",
     "obsidian": "latest",
+    "prettier": "^3.8.1",
     "typescript": "^5.4.0",
     "typescript-eslint": "^8.0.0"
   }

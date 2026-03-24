@@ -6,9 +6,7 @@ import { join, relative, extname, basename } from "path";
 
 function getArg(name, fallback) {
   const idx = process.argv.indexOf(name);
-  return idx !== -1 && process.argv[idx + 1]
-    ? process.argv[idx + 1]
-    : fallback;
+  return idx !== -1 && process.argv[idx + 1] ? process.argv[idx + 1] : fallback;
 }
 
 function hasFlag(name) {
@@ -19,16 +17,16 @@ const vaultPath = getArg("--vault", null);
 if (!vaultPath) {
   console.error(
     "Usage: node scripts/index.mjs --vault <path> [options]\n\n" +
-    "Options:\n" +
-    "  --model <id>            Embedding model (default: Xenova/all-MiniLM-L6-v2)\n" +
-    "  --exclude <dirs>        Comma-separated folders to skip (default: daily,scratch,templates)\n" +
-    "  --truncate <n>          Max chars per note (default: 2000)\n" +
-    "  --output <path>         Custom output path for embeddings.json\n" +
-    "  --include-frontmatter   Include YAML tags in embedded text (default: on)\n" +
-    "  --no-frontmatter        Strip frontmatter tags from embedded text\n" +
-    "  --title-weight <n>      Prepend title N times (default: 1, 0 to disable)\n" +
-    "  --include-path          Prepend file path to content\n" +
-    "  --min-length <n>        Skip notes shorter than N chars (default: 20)",
+      "Options:\n" +
+      "  --model <id>            Embedding model (default: Xenova/all-MiniLM-L6-v2)\n" +
+      "  --exclude <dirs>        Comma-separated folders to skip (default: daily,scratch,templates)\n" +
+      "  --truncate <n>          Max chars per note (default: 2000)\n" +
+      "  --output <path>         Custom output path for embeddings.json\n" +
+      "  --include-frontmatter   Include YAML tags in embedded text (default: on)\n" +
+      "  --no-frontmatter        Strip frontmatter tags from embedded text\n" +
+      "  --title-weight <n>      Prepend title N times (default: 1, 0 to disable)\n" +
+      "  --include-path          Prepend file path to content\n" +
+      "  --min-length <n>        Skip notes shorter than N chars (default: 20)",
   );
   process.exit(1);
 }
@@ -42,12 +40,7 @@ const TITLE_WEIGHT = parseInt(getArg("--title-weight", "1"), 10);
 const INCLUDE_PATH = hasFlag("--include-path");
 const MIN_LENGTH = parseInt(getArg("--min-length", "20"), 10);
 
-const PLUGIN_DIR = join(
-  vaultPath,
-  ".obsidian",
-  "plugins",
-  "obsidian-vector-search",
-);
+const PLUGIN_DIR = join(vaultPath, ".obsidian", "plugins", "obsidian-vector-search");
 const OUTPUT = OUTPUT_ARG || join(PLUGIN_DIR, "embeddings.json");
 
 const SKIP_DIRS = new Set([
@@ -55,7 +48,9 @@ const SKIP_DIRS = new Set([
   ".git",
   "node_modules",
   ".trash",
-  ...EXCLUDE_ARG.split(",").map((s) => s.trim()).filter(Boolean),
+  ...EXCLUDE_ARG.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
 ]);
 
 async function collectMdFiles(dir) {
@@ -86,7 +81,10 @@ function prepareContent(raw, filePath) {
       // Extract tags
       const tagMatch = fm.match(/^tags:\s*\[([^\]]*)\]/m);
       if (tagMatch) {
-        tags = tagMatch[1].split(",").map((t) => t.trim()).filter(Boolean);
+        tags = tagMatch[1]
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean);
       } else {
         const lines = fm.split("\n");
         let inTags = false;
@@ -106,9 +104,7 @@ function prepareContent(raw, filePath) {
 
   // Extract title
   const titleMatch = body.match(/^#\s+(.+)$/m);
-  const title = titleMatch
-    ? titleMatch[1].trim()
-    : basename(filePath, ".md").replace(/-/g, " ");
+  const title = titleMatch ? titleMatch[1].trim() : basename(filePath, ".md").replace(/-/g, " ");
 
   // Build embedding input
   let prefix = "";
@@ -131,9 +127,7 @@ let existing = { notes: {} };
 try {
   const raw = await readFile(OUTPUT, "utf-8");
   existing = JSON.parse(raw);
-  console.log(
-    `Loaded existing index with ${Object.keys(existing.notes).length} notes`,
-  );
+  console.log(`Loaded existing index with ${Object.keys(existing.notes).length} notes`);
 } catch {
   // No existing index
 }
@@ -190,14 +184,10 @@ for (const file of mdFiles) {
 
   notes[relPath] = { v, title, mtime };
   embedded++;
-  process.stdout.write(
-    `\r  Embedded ${embedded} / ${mdFiles.length - skipped} notes`,
-  );
+  process.stdout.write(`\r  Embedded ${embedded} / ${mdFiles.length - skipped} notes`);
 }
 
-console.log(
-  `\nDone: ${embedded} embedded, ${skipped} skipped (unchanged or too short)`,
-);
+console.log(`\nDone: ${embedded} embedded, ${skipped} skipped (unchanged or too short)`);
 
 const dims = Object.values(notes)[0]?.v?.length || 384;
 const index = {
@@ -211,6 +201,4 @@ const outputDir = OUTPUT.substring(0, OUTPUT.lastIndexOf("/"));
 await mkdir(outputDir, { recursive: true });
 await writeFile(OUTPUT, JSON.stringify(index));
 const sizeKB = (JSON.stringify(index).length / 1024).toFixed(1);
-console.log(
-  `Wrote ${OUTPUT} (${sizeKB} KB, ${Object.keys(notes).length} notes)`,
-);
+console.log(`Wrote ${OUTPUT} (${sizeKB} KB, ${Object.keys(notes).length} notes)`);

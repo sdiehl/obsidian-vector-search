@@ -78,8 +78,14 @@ function sendToIframe(method: string, args: Record<string, any>): Promise<any> {
       reject(new Error("Model loading timed out (60s). Check your network connection."));
     }, 60_000);
     pending.set(id, {
-      resolve: (v: any) => { clearTimeout(timeout); resolve(v); },
-      reject: (e: Error) => { clearTimeout(timeout); reject(e); },
+      resolve: (v: any) => {
+        clearTimeout(timeout);
+        resolve(v);
+      },
+      reject: (e: Error) => {
+        clearTimeout(timeout);
+        reject(e);
+      },
     });
     iframe!.contentWindow!.postMessage({ id, method, args }, "*");
   });
@@ -132,9 +138,15 @@ export async function embedQuery(
     // Wait for iframe ready signal
     await new Promise<void>((resolve) => {
       const check = setInterval(() => {
-        if (ready) { clearInterval(check); resolve(); }
+        if (ready) {
+          clearInterval(check);
+          resolve();
+        }
       }, 100);
-      setTimeout(() => { clearInterval(check); resolve(); }, 5000);
+      setTimeout(() => {
+        clearInterval(check);
+        resolve();
+      }, 5000);
     });
   }
 
