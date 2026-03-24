@@ -25,6 +25,11 @@ jobs:
         run: npm run fmt:check
       - name: Build
         run: npm run build
+      - name: Package
+        run: |
+          mkdir -p obsidian-vector-search
+          cp main.js manifest.json styles.css LICENSE obsidian-vector-search/
+          zip -r obsidian-vector-search.zip obsidian-vector-search/
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
@@ -32,4 +37,5 @@ jobs:
             main.js
             manifest.json
             styles.css
+            obsidian-vector-search.zip
           generate_release_notes: true

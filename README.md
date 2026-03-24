@@ -6,16 +6,24 @@ Semantic similarity sidebar for Obsidian. Shows related notes using vector embed
 
 ## Install
 
+### Download release
+
+Download `obsidian-vector-search.zip` from the [latest release](https://github.com/sdiehl/obsidian-vector-search/releases/latest), unzip it into your vault's `.obsidian/plugins/` folder, and enable "Vector Search" in Settings > Community Plugins.
+
+### BRAT
+
+Install [BRAT](https://github.com/TfTHacker/obsidian42-brat), then add `sdiehl/obsidian-vector-search` as a beta plugin.
+
+### From source
+
 ```bash
 git clone https://github.com/sdiehl/obsidian-vector-search.git
 cd obsidian-vector-search
-npm install && npm run build   # or: yarn install && yarn build
+npm install && npm run build
 OBSIDIAN_VAULT=/path/to/vault npm run deploy
 ```
 
-Enable "Vector Search" in Settings > Community Plugins. The plugin builds the index automatically on first launch. The deploy script also adds the index file to your vault's `.gitignore`.
-
-Re-run `npm run deploy` after pulling updates.
+Re-run `npm run deploy` after pulling updates. The deploy script also adds the index file to your vault's `.gitignore`.
 
 ### iOS / iPad
 
