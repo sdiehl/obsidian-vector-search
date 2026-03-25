@@ -94,6 +94,12 @@ node scripts/index.mjs --vault /path/to/vault
 
 Run with `--help` for all options including model selection, folder exclusion, truncation length, and title weighting.
 
+## Releasing
+
+```bash
+node scripts/release.mjs 0.3.0
+```
+
 ## License
 
 [MIT](LICENSE)
