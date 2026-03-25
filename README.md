@@ -1,20 +1,28 @@
-# obsidian-vector-search
+# Vector Search
 
 [![CI](https://github.com/sdiehl/obsidian-vector-search/actions/workflows/ci.yml/badge.svg)](https://github.com/sdiehl/obsidian-vector-search/actions/workflows/ci.yml)
 
-Semantic similarity sidebar for Obsidian. Shows related notes using vector embeddings. Uses [Orama](https://github.com/oramasearch/orama) under the hood for search.
+Semantic similarity search for Obsidian vaults, powered by on-device vector embeddings. Find related notes automatically as you browse, or run ad-hoc hybrid queries from the sidebar. Everything runs locally with no API keys or cloud services required.
+
+Uses [Orama](https://github.com/oramasearch/orama) for hybrid full-text + vector search and [Transformers.js](https://github.com/huggingface/transformers.js) for on-device embeddings.
 
 ## Install
 
-### Download release
+### From Community Plugins
 
-Download `obsidian-vector-search.zip` from the [latest release](https://github.com/sdiehl/obsidian-vector-search/releases/latest), unzip it into your vault's `.obsidian/plugins/` folder, and enable "Vector Search" in Settings > Community Plugins.
+1. Open Settings > Community Plugins
+2. Search for "Vector Search"
+3. Install and enable
+
+### Download Release
+
+Download `vector-search.zip` from the [latest release](https://github.com/sdiehl/obsidian-vector-search/releases/latest), unzip it into your vault's `.obsidian/plugins/` folder, and enable "Vector Search" in Settings > Community Plugins.
 
 ### BRAT
 
 Install [BRAT](https://github.com/TfTHacker/obsidian42-brat), then add `sdiehl/obsidian-vector-search` as a beta plugin.
 
-### From source
+### From Source
 
 ```bash
 git clone https://github.com/sdiehl/obsidian-vector-search.git
@@ -25,31 +33,67 @@ OBSIDIAN_VAULT=/path/to/vault npm run deploy
 
 Re-run `npm run deploy` after pulling updates. The deploy script also adds the index file to your vault's `.gitignore`.
 
-### iOS / iPad
-
-Set indexing mode to **Read-only (iPad mode)** in Settings > Vector Search. The index syncs from your Mac via Obsidian Sync or iCloud. The sidebar works instantly. Ad-hoc search downloads the embedding model (~23MB) on first use, cached after that.
-
 ## Usage
 
 Open the sidebar via the ribbon icon or `Cmd+P` > "Open vector search sidebar".
 
 - **Similar notes**: Navigate to any note to see semantically related notes ranked by similarity.
-- **Semantic search**: Type a query in the search bar and press Enter.
+- **Hybrid search**: Type a query in the search bar and press Enter. Combines keyword matching with semantic similarity for accurate results. The balance between keyword and semantic scoring is configurable.
 - **Auto-indexing**: Notes are re-indexed on save. New and renamed notes are indexed automatically.
 - **Rebuild**: Use Settings > Vector Search > Rebuild to re-index the entire vault.
+
+### Indexing Modes
+
+| Mode | Behavior |
+|------|----------|
+| On save | Re-embeds notes when you navigate away after editing |
+| Interval | Periodic full re-index at a configurable interval |
+| Manual | Only indexes when you click "Rebuild" in settings |
+| Read-only | Uses a pre-built index, no writes (for iPad/mobile) |
+
+### iPad / Mobile Setup
+
+1. Build the index on desktop (or use the CLI: `node scripts/index.mjs --vault /path/to/vault`)
+2. Sync the index file via Obsidian Sync or iCloud
+3. On iPad, set indexing mode to **Read-only** and enable **Low memory mode**
+
+Low memory mode skips caching vectors in RAM (Orama handles storage internally), roughly halving memory usage. The similar-notes view will embed the active note on each switch instead of using a cached vector.
 
 ## Embeddings
 
 Embeddings are computed via [Transformers.js](https://github.com/huggingface/transformers.js) running ONNX models in a sandboxed iframe using the WebAssembly backend (no native dependencies, works on desktop and iPad).
 
-| Model                        | Dimensions | Quantization | Download | RAM   |
-| ---------------------------- | ---------- | ------------ | -------- | ----- |
-| `all-MiniLM-L6-v2` (default) | 384        | INT8         | ~23MB    | ~50MB |
-| `all-MiniLM-L12-v2`          | 384        | INT8         | ~33MB    | ~70MB |
-| `bge-small-en-v1.5`          | 384        | INT8         | ~33MB    | ~70MB |
+| Model | Dimensions | Quantization | Download | RAM |
+|-------|------------|--------------|----------|-----|
+| `all-MiniLM-L6-v2` (default) | 384 | INT8 | ~23 MB | ~50 MB |
+| `all-MiniLM-L12-v2` | 384 | INT8 | ~33 MB | ~70 MB |
+| `bge-small-en-v1.5` | 384 | INT8 | ~33 MB | ~70 MB |
 
-WebGPU acceleration is used when available (Chrome/Edge on supported hardware). Falls back to WASM single-threaded on iPad and environments without SharedArrayBuffer. Model files are downloaded from HuggingFace on first use and cached in IndexedDB.
+Model files are downloaded from HuggingFace on first use and cached in IndexedDB. WebGPU acceleration is used when available. Falls back to WASM single-threaded on iPad and environments without SharedArrayBuffer.
+
+## Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Embedding model | MiniLM-L6 | Model for computing embeddings |
+| Max results | 20 | Maximum similar notes shown |
+| Min similarity | 0.1 | Hide results below this threshold (0.0 to 1.0) |
+| Hybrid search weight | 0.5 | Balance between keyword (0.0) and semantic (1.0) for search |
+| Low memory mode | Off | Reduces memory usage for iPad/mobile devices |
+| Indexing mode | On save | When and how notes get indexed |
+| Truncation length | 2000 | Max characters per note to embed |
+| Exclude folders | daily, scratch, templates | Comma-separated folders to skip |
+
+## CLI Indexing
+
+Pre-index a vault from the command line (useful for large vaults or iPad sync):
+
+```bash
+node scripts/index.mjs --vault /path/to/vault
+```
+
+Run with `--help` for all options including model selection, folder exclusion, truncation length, and title weighting.
 
 ## License
 
-MIT
+[MIT](LICENSE)

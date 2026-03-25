@@ -27,9 +27,9 @@ jobs:
         run: npm run build
       - name: Package
         run: |
-          mkdir -p obsidian-vector-search
-          cp main.js manifest.json styles.css LICENSE obsidian-vector-search/
-          zip -r obsidian-vector-search.zip obsidian-vector-search/
+          mkdir -p vector-search
+          cp main.js manifest.json styles.css LICENSE vector-search/
+          zip -r vector-search.zip vector-search/
       - name: Delete existing release
         run: gh release delete "${{ github.ref_name }}" --yes || true
         env:
@@ -41,6 +41,6 @@ jobs:
             main.js
             manifest.json
             styles.css
-            obsidian-vector-search.zip
+            vector-search.zip
           generate_release_notes: true
           make_latest: true

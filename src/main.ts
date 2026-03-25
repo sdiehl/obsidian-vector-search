@@ -11,7 +11,9 @@ import {
   getNoteMtime,
   getNoteVec,
   findSimilar,
+  findHybrid,
   getAllPaths,
+  setLowMemory,
 } from "./vectors";
 import { resetEmbedder, embedQuery } from "./embedder";
 import { VectorSearchSettingTab, DEFAULT_SETTINGS, type VectorSearchSettings } from "./settings";
@@ -37,6 +39,7 @@ export default class VectorSearchPlugin extends Plugin {
     } catch (e) {
       console.error("Vector Search: failed to load settings", e);
     }
+    setLowMemory(this.settings.lowMemory);
     try {
       await this.loadIndex();
     } catch (e) {
@@ -257,6 +260,30 @@ export default class VectorSearchPlugin extends Plugin {
     excludePath?: string,
   ): { path: string; title: string; score: number }[] {
     return findSimilar(vec, excludePath, this.settings.maxResults, this.settings.minScore);
+  }
+
+  findHybridNotes(
+    vec: number[],
+    term: string,
+  ): { path: string; title: string; score: number }[] {
+    return findHybrid(
+      vec,
+      term,
+      undefined,
+      this.settings.maxResults,
+      this.settings.minScore,
+      this.settings.vectorWeight,
+    );
+  }
+
+  async getActiveNoteEmbedding(path: string): Promise<number[] | null> {
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile)) return null;
+    const raw = await this.app.vault.cachedRead(file);
+    const prepared = this.prepareContent(raw, path, file.basename);
+    if (prepared.text.length < this.settings.minContentLength) return null;
+    const truncated = prepared.text.slice(0, this.settings.truncationLength);
+    return embedQuery(truncated, this.settings.model);
   }
 
   isFileExcluded(path: string): string | null {
@@ -524,6 +551,7 @@ export default class VectorSearchPlugin extends Plugin {
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
+    setLowMemory(this.settings.lowMemory);
     resetEmbedder();
   }
 

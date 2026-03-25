@@ -109,6 +109,20 @@ export class VectorSearchView extends ItemView {
     }
 
     let vec = this.plugin.getNoteVector(path);
+
+    // In low memory mode, embed the active note on the fly
+    if (!vec && this.plugin.settings.lowMemory) {
+      const msg = isModelLoading()
+        ? getStatusMessage() || "Loading model..."
+        : `Embedding "${basename}"...`;
+      this.setStatus(msg);
+      try {
+        vec = await this.plugin.getActiveNoteEmbedding(path);
+      } catch {
+        // Fall through to not-indexed state
+      }
+    }
+
     if (!vec) {
       const excluded = this.plugin.isFileExcluded(path);
       if (excluded) {
@@ -165,7 +179,7 @@ export class VectorSearchView extends ItemView {
 
     try {
       const queryVec = await embedQuery(query, this.plugin.settings.model);
-      const results = this.plugin.findSimilarNotes(queryVec);
+      const results = this.plugin.findHybridNotes(queryVec, query);
       this.setStatus(`Results for "${query}"`);
       this.renderResults(results);
     } catch (e: any) {

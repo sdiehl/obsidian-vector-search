@@ -15,9 +15,18 @@ export interface SimilarNote {
 }
 
 let db: AnyOrama | null = null;
+let lowMemoryEnabled = false;
 
 const vecMap = new Map<string, number[]>();
 const mtimeMap = new Map<string, number>();
+
+export function setLowMemory(enabled: boolean): void {
+  lowMemoryEnabled = enabled;
+  if (enabled) {
+    vecMap.clear();
+    mtimeMap.clear();
+  }
+}
 
 export function createDb(): void {
   db = create({ schema: SCHEMA }) as AnyOrama;
@@ -52,8 +61,10 @@ export function upsertNote(
     // not found
   }
   void insert(db!, { path, title, content, mtime, embedding });
-  vecMap.set(path, embedding);
-  mtimeMap.set(path, mtime);
+  if (!lowMemoryEnabled) {
+    vecMap.set(path, embedding);
+    mtimeMap.set(path, mtime);
+  }
 }
 
 export function removeNote(path: string): void {
@@ -86,6 +97,35 @@ export function findSimilar(
     mode: "vector",
     vector: { value: queryVec, property: "embedding" },
     similarity: minScore,
+    limit: limit + 1,
+  }) as { hits: { document: Record<string, unknown>; score: number }[] };
+  return results.hits
+    .filter((h) => h.document.path !== excludePath)
+    .slice(0, limit)
+    .map((h) => ({
+      path: h.document.path as string,
+      title: h.document.title as string,
+      score: h.score,
+    }));
+}
+
+export function findHybrid(
+  queryVec: number[],
+  term: string,
+  excludePath: string | undefined,
+  limit: number,
+  minScore: number,
+  vectorWeight: number,
+): SimilarNote[] {
+  if (!db) return [];
+  const textWeight = 1 - vectorWeight;
+  const results = search(db, {
+    mode: "hybrid",
+    term,
+    properties: ["title", "content"],
+    vector: { value: queryVec, property: "embedding" },
+    similarity: minScore,
+    hybridWeights: { text: textWeight, vector: vectorWeight },
     limit: limit + 1,
   }) as { hits: { document: Record<string, unknown>; score: number }[] };
   return results.hits
@@ -131,14 +171,16 @@ export function loadDb(data: {
   if (data.orama) {
     load(db, data.orama as Parameters<typeof load>[1]);
   }
-  if (data.vecs) {
-    for (const [path, vec] of data.vecs) {
-      vecMap.set(path, vec);
+  if (!lowMemoryEnabled) {
+    if (data.vecs) {
+      for (const [path, vec] of data.vecs) {
+        vecMap.set(path, vec);
+      }
     }
-  }
-  if (data.mtimes) {
-    for (const [path, mtime] of data.mtimes) {
-      mtimeMap.set(path, mtime);
+    if (data.mtimes) {
+      for (const [path, mtime] of data.mtimes) {
+        mtimeMap.set(path, mtime);
+      }
     }
   }
 }

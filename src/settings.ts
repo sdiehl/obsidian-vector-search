@@ -38,6 +38,8 @@ export interface VectorSearchSettings {
   stripMarkdown: boolean;
   stripPatterns: string;
   includeGlobs: string;
+  lowMemory: boolean;
+  vectorWeight: number;
 }
 
 export const DEFAULT_SETTINGS: VectorSearchSettings = {
@@ -59,6 +61,8 @@ export const DEFAULT_SETTINGS: VectorSearchSettings = {
   stripMarkdown: false,
   stripPatterns: "",
   includeGlobs: "",
+  lowMemory: false,
+  vectorWeight: 0.5,
 };
 
 export class VectorSearchSettingTab extends PluginSettingTab {
@@ -206,6 +210,35 @@ export class VectorSearchSettingTab extends PluginSettingTab {
         toggle.setValue(this.plugin.settings.showScores);
         toggle.onChange(async (value) => {
           this.plugin.settings.showScores = value;
+          await this.plugin.saveSettings();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("Hybrid search weight")
+      .setDesc(
+        "Balance between keyword (0.0) and semantic (1.0) for ad-hoc search queries. Default 0.5 is balanced.",
+      )
+      .addText((text) => {
+        text.setValue(String(this.plugin.settings.vectorWeight));
+        text.onChange(async (value) => {
+          const n = parseFloat(value);
+          if (!isNaN(n) && n >= 0 && n <= 1) {
+            this.plugin.settings.vectorWeight = n;
+            await this.plugin.saveSettings();
+          }
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("Low memory mode")
+      .setDesc(
+        "Reduces memory usage by not caching vectors in RAM. Recommended for iPad and mobile devices. Similar-notes view will embed the active note on each switch.",
+      )
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.settings.lowMemory);
+        toggle.onChange(async (value) => {
+          this.plugin.settings.lowMemory = value;
           await this.plugin.saveSettings();
         });
       });

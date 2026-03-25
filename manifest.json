@@ -1,9 +1,9 @@
 {
-  "id": "obsidian-vector-search",
+  "id": "vector-search",
   "name": "Vector Search",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "minAppVersion": "1.2.0",
-  "description": "Semantic similarity sidebar powered by vector embeddings. Shows related notes, supports ad-hoc semantic search.",
+  "description": "Semantic similarity sidebar powered by vector embeddings. Shows related notes, supports ad-hoc hybrid search.",
   "author": "Stephen Diehl",
   "authorUrl": "https://www.stephendiehl.com",
   "isDesktopOnly": false
