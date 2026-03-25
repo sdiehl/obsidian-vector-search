@@ -262,10 +262,7 @@ export default class VectorSearchPlugin extends Plugin {
     return findSimilar(vec, excludePath, this.settings.maxResults, this.settings.minScore);
   }
 
-  findHybridNotes(
-    vec: number[],
-    term: string,
-  ): { path: string; title: string; score: number }[] {
+  findHybridNotes(vec: number[], term: string): { path: string; title: string; score: number }[] {
     return findHybrid(
       vec,
       term,

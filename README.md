@@ -44,12 +44,12 @@ Open the sidebar via the ribbon icon or `Cmd+P` > "Open vector search sidebar".
 
 ### Indexing Modes
 
-| Mode | Behavior |
-|------|----------|
-| On save | Re-embeds notes when you navigate away after editing |
-| Interval | Periodic full re-index at a configurable interval |
-| Manual | Only indexes when you click "Rebuild" in settings |
-| Read-only | Uses a pre-built index, no writes (for iPad/mobile) |
+| Mode      | Behavior                                             |
+| --------- | ---------------------------------------------------- |
+| On save   | Re-embeds notes when you navigate away after editing |
+| Interval  | Periodic full re-index at a configurable interval    |
+| Manual    | Only indexes when you click "Rebuild" in settings    |
+| Read-only | Uses a pre-built index, no writes (for iPad/mobile)  |
 
 ### iPad / Mobile Setup
 
@@ -63,26 +63,26 @@ Low memory mode skips caching vectors in RAM (Orama handles storage internally),
 
 Embeddings are computed via [Transformers.js](https://github.com/huggingface/transformers.js) running ONNX models in a sandboxed iframe using the WebAssembly backend (no native dependencies, works on desktop and iPad).
 
-| Model | Dimensions | Quantization | Download | RAM |
-|-------|------------|--------------|----------|-----|
-| `all-MiniLM-L6-v2` (default) | 384 | INT8 | ~23 MB | ~50 MB |
-| `all-MiniLM-L12-v2` | 384 | INT8 | ~33 MB | ~70 MB |
-| `bge-small-en-v1.5` | 384 | INT8 | ~33 MB | ~70 MB |
+| Model                        | Dimensions | Quantization | Download | RAM    |
+| ---------------------------- | ---------- | ------------ | -------- | ------ |
+| `all-MiniLM-L6-v2` (default) | 384        | INT8         | ~23 MB   | ~50 MB |
+| `all-MiniLM-L12-v2`          | 384        | INT8         | ~33 MB   | ~70 MB |
+| `bge-small-en-v1.5`          | 384        | INT8         | ~33 MB   | ~70 MB |
 
 Model files are downloaded from HuggingFace on first use and cached in IndexedDB. WebGPU acceleration is used when available. Falls back to WASM single-threaded on iPad and environments without SharedArrayBuffer.
 
 ## Settings
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| Embedding model | MiniLM-L6 | Model for computing embeddings |
-| Max results | 20 | Maximum similar notes shown |
-| Min similarity | 0.1 | Hide results below this threshold (0.0 to 1.0) |
-| Hybrid search weight | 0.5 | Balance between keyword (0.0) and semantic (1.0) for search |
-| Low memory mode | Off | Reduces memory usage for iPad/mobile devices |
-| Indexing mode | On save | When and how notes get indexed |
-| Truncation length | 2000 | Max characters per note to embed |
-| Exclude folders | daily, scratch, templates | Comma-separated folders to skip |
+| Setting              | Default                   | Description                                                 |
+| -------------------- | ------------------------- | ----------------------------------------------------------- |
+| Embedding model      | MiniLM-L6                 | Model for computing embeddings                              |
+| Max results          | 20                        | Maximum similar notes shown                                 |
+| Min similarity       | 0.1                       | Hide results below this threshold (0.0 to 1.0)              |
+| Hybrid search weight | 0.5                       | Balance between keyword (0.0) and semantic (1.0) for search |
+| Low memory mode      | Off                       | Reduces memory usage for iPad/mobile devices                |
+| Indexing mode        | On save                   | When and how notes get indexed                              |
+| Truncation length    | 2000                      | Max characters per note to embed                            |
+| Exclude folders      | daily, scratch, templates | Comma-separated folders to skip                             |
 
 ## CLI Indexing
 
