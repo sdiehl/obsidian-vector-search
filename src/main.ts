@@ -27,6 +27,7 @@ export default class VectorSearchPlugin extends Plugin {
   private pendingFiles: Set<string> = new Set();
   private flushPending: () => void;
   private intervalTimer: ReturnType<typeof setInterval> | null = null;
+  private embedCache = new Map<string, { hash: string; vec: number[] }>();
 
   constructor(app: any, manifest: any) {
     super(app, manifest);
@@ -273,6 +274,17 @@ export default class VectorSearchPlugin extends Plugin {
     );
   }
 
+  private async contentHash(text: string): Promise<string> {
+    const buf = new TextEncoder().encode(text);
+    const digest = await crypto.subtle.digest("SHA-256", buf);
+    const arr = new Uint8Array(digest);
+    let hex = "";
+    for (let i = 0; i < arr.length; i++) {
+      hex += arr[i].toString(16).padStart(2, "0");
+    }
+    return hex;
+  }
+
   async getActiveNoteEmbedding(path: string): Promise<number[] | null> {
     const file = this.app.vault.getAbstractFileByPath(path);
     if (!(file instanceof TFile)) return null;
@@ -280,7 +292,12 @@ export default class VectorSearchPlugin extends Plugin {
     const prepared = this.prepareContent(raw, path, file.basename);
     if (prepared.text.length < this.settings.minContentLength) return null;
     const truncated = prepared.text.slice(0, this.settings.truncationLength);
-    return embedQuery(truncated, this.settings.model);
+    const hash = await this.contentHash(truncated);
+    const cached = this.embedCache.get(path);
+    if (cached && cached.hash === hash) return cached.vec;
+    const vec = await embedQuery(truncated, this.settings.model);
+    this.embedCache.set(path, { hash, vec });
+    return vec;
   }
 
   isFileExcluded(path: string): string | null {
