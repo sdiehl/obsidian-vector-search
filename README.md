@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/sdiehl/obsidian-vector-search/actions/workflows/ci.yml/badge.svg)](https://github.com/sdiehl/obsidian-vector-search/actions/workflows/ci.yml)
 
-Semantic similarity search for Obsidian vaults, powered by on-device vector embeddings. Find related notes automatically as you browse, or run ad-hoc hybrid queries from the sidebar. Everything runs locally with no API keys or cloud services required.
+Semantic similarity search for Obsidian vaults using only on-device vector embeddings. Find related notes automatically as you browse, or run ad-hoc hybrid queries from the sidebar. Everything runs locally with no API keys or cloud services required.
 
 Uses [Orama](https://github.com/oramasearch/orama) for hybrid full-text + vector search and [Transformers.js](https://github.com/huggingface/transformers.js) for on-device embeddings.
 
@@ -71,19 +71,6 @@ Embeddings are computed via [Transformers.js](https://github.com/huggingface/tra
 
 Model files are downloaded from HuggingFace on first use and cached in IndexedDB. WebGPU acceleration is used when available. Falls back to WASM single-threaded on iPad and environments without SharedArrayBuffer.
 
-## Settings
-
-| Setting              | Default                   | Description                                                 |
-| -------------------- | ------------------------- | ----------------------------------------------------------- |
-| Embedding model      | MiniLM-L6                 | Model for computing embeddings                              |
-| Max results          | 20                        | Maximum similar notes shown                                 |
-| Min similarity       | 0.1                       | Hide results below this threshold (0.0 to 1.0)              |
-| Hybrid search weight | 0.5                       | Balance between keyword (0.0) and semantic (1.0) for search |
-| Low memory mode      | Off                       | Reduces memory usage for iPad/mobile devices                |
-| Indexing mode        | On save                   | When and how notes get indexed                              |
-| Truncation length    | 2000                      | Max characters per note to embed                            |
-| Exclude folders      | daily, scratch, templates | Comma-separated folders to skip                             |
-
 ## CLI Indexing
 
 Pre-index a vault from the command line (useful for large vaults or iPad sync):
@@ -91,8 +78,6 @@ Pre-index a vault from the command line (useful for large vaults or iPad sync):
 ```bash
 node scripts/index.mjs --vault /path/to/vault
 ```
-
-Run with `--help` for all options including model selection, folder exclusion, truncation length, and title weighting.
 
 ## Releasing
 
