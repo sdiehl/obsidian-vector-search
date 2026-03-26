@@ -1,6 +1,6 @@
 {
-  "name": "vector-search",
-  "version": "0.2.0",
+  "name": "vector-sidebar",
+  "version": "0.2.1",
   "description": "Semantic vector search for Obsidian vaults",
   "main": "main.js",
   "scripts": {

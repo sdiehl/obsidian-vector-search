@@ -1,7 +1,7 @@
 {
-  "id": "vector-search",
-  "name": "Vector Search",
-  "version": "0.2.0",
+  "id": "vector-sidebar",
+  "name": "Vector Sidebar",
+  "version": "0.2.1",
   "minAppVersion": "1.2.0",
   "description": "Semantic similarity sidebar powered by vector embeddings. Shows related notes, supports ad-hoc hybrid search.",
   "author": "Stephen Diehl",
