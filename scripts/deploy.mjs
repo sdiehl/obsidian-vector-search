@@ -13,7 +13,7 @@ if (!vault) {
   process.exit(1);
 }
 
-const dest = join(vault, ".obsidian", "plugins", "vector-search");
+const dest = join(vault, ".obsidian", "plugins", "vector-sidebar");
 mkdirSync(dest, { recursive: true });
 
 for (const file of ["main.js", "manifest.json", "styles.css"]) {
@@ -23,7 +23,7 @@ for (const file of ["main.js", "manifest.json", "styles.css"]) {
 
 // Add embeddings.json to vault .gitignore if not already present
 const gitignorePath = join(vault, ".gitignore");
-const ignoreEntry = ".obsidian/plugins/vector-search/embeddings.json";
+const ignoreEntry = ".obsidian/plugins/vector-sidebar/embeddings.json";
 if (existsSync(gitignorePath)) {
   const content = readFileSync(gitignorePath, "utf-8");
   if (!content.includes(ignoreEntry)) {

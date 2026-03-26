@@ -287,7 +287,7 @@ export default class VectorSearchPlugin extends Plugin {
 
   async getActiveNoteEmbedding(path: string): Promise<number[] | null> {
     const file = this.app.vault.getAbstractFileByPath(path);
-    if (!(file instanceof TFile)) return null;
+    if (!(file instanceof TFile) || file.extension !== "md") return null;
     const raw = await this.app.vault.cachedRead(file);
     const prepared = this.prepareContent(raw, path, file.basename);
     if (prepared.text.length < this.settings.minContentLength) return null;
@@ -464,6 +464,7 @@ export default class VectorSearchPlugin extends Plugin {
     filePath: string,
     fallbackTitle: string,
   ): { text: string; title: string } {
+    if (typeof raw !== "string") return { text: "", title: fallbackTitle };
     let body = raw;
     let tags: string[] = [];
 

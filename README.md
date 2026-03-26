@@ -8,19 +8,20 @@ Uses [Orama](https://github.com/oramasearch/orama) for hybrid full-text + vector
 
 ## Install
 
-### From Community Plugins
+> **Note:** This plugin is not yet available in the Obsidian Community Plugins directory (pending review). Use BRAT or a manual install for now.
 
-1. Open Settings > Community Plugins
-2. Search for "Vector Search"
-3. Install and enable
+### BRAT (recommended)
+
+1. Install [BRAT](https://github.com/TfTHacker/obsidian42-brat) from Community Plugins
+2. Open Settings > BRAT > Add Beta Plugin
+3. Enter `sdiehl/obsidian-vector-search`
+4. Enable "Vector Sidebar" in Settings > Community Plugins
+
+BRAT will keep the plugin updated automatically when new releases are published.
 
 ### Download Release
 
-Download `vector-search.zip` from the [latest release](https://github.com/sdiehl/obsidian-vector-search/releases/latest), unzip it into your vault's `.obsidian/plugins/` folder, and enable "Vector Search" in Settings > Community Plugins.
-
-### BRAT
-
-Install [BRAT](https://github.com/TfTHacker/obsidian42-brat), then add `sdiehl/obsidian-vector-search` as a beta plugin.
+Download `vector-sidebar.zip` from the [latest release](https://github.com/sdiehl/obsidian-vector-search/releases/latest), unzip it into your vault's `.obsidian/plugins/` folder, and enable "Vector Sidebar" in Settings > Community Plugins.
 
 ### From Source
 
